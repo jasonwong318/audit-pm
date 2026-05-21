@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="內審PM">
+<meta name="theme-color" content="#1A3A5C">
+<title>內審項目管理 | Internal Audit PM</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,'PingFang TC','PingFang SC','Noto Sans TC','Microsoft JhengHei',sans-serif;background:#f5f5f3;color:#1a1a1a;min-height:100vh}
+/* ── Topbar ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #d3d1c7;background:#fff;flex-wrap:wrap;gap:8px}
+.logo{font-size:14px;font-weight:700;color:#1a3a5c}
+.logo-sub{font-size:11px;color:#888780;margin-left:6px}
+.topbar-right{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+/* ── Identity picker ── */
+.identity-picker{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid #d3d1c7;border-radius:20px;background:#f8f7f4;cursor:pointer;transition:all .15s}
+.identity-picker:hover{background:#f1efe8;border-color:#b4b2a9}
+.identity-avatar{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0}
+.identity-name{font-size:12px;font-weight:600;color:#1a3a5c}
+.identity-caret{font-size:9px;color:#888780}
+.identity-dropdown{position:absolute;top:calc(100% + 6px);right:0;background:#fff;border:1px solid #d3d1c7;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:500;min-width:160px;overflow:hidden}
+.identity-option{padding:9px 14px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .1s}
+.identity-option:hover{background:#f1efe8}
+.identity-option.active{font-weight:700;color:#1a3a5c;background:#EBF4FC}
+.identity-wrap{position:relative}
+/* ── Project tabs ── */
+.proj-tabs{display:flex;gap:4px;overflow-x:auto;padding:8px 16px 0;background:#f1efe8;border-bottom:1px solid #d3d1c7}
+.proj-tab{padding:7px 13px;font-size:13px;border-radius:8px 8px 0 0;border:1px solid transparent;cursor:pointer;white-space:nowrap;color:#888780;background:transparent;transition:all .15s}
+.proj-tab.active{background:#fff;border-color:#d3d1c7;border-bottom-color:#fff;color:#1a1a1a;font-weight:700}
+.proj-tab:hover:not(.active){background:rgba(255,255,255,.6)}
+.add-proj-tab{padding:7px 12px;font-size:13px;border-radius:8px 8px 0 0;border:1px dashed #b4b2a9;cursor:pointer;color:#b4b2a9;background:transparent}
+/* ── View nav ── */
+.view-nav{display:flex;gap:0;background:#fff;border-bottom:2px solid #f1efe8;padding:0 16px;overflow-x:auto}
+.vnav-btn{padding:10px 16px;font-size:12px;font-weight:600;cursor:pointer;color:#888780;background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;transition:all .15s}
+.vnav-btn.active{color:#1a3a5c;border-bottom-color:#1a3a5c}
+.vnav-btn:hover:not(.active){color:#5f5e5a;background:#f8f7f4}
+/* ── Sync bar ── */
+.sync-bar{display:flex;align-items:center;gap:8px;padding:5px 16px;font-size:11px;border-bottom:1px solid #eeece6;background:#fafaf8}
+.sync-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sync-ok .sync-dot{background:#3B6D11}
+.sync-warn .sync-dot{background:#BA7517;animation:pulse 1.5s infinite}
+.sync-err .sync-dot{background:#A32D2D}
+.sync-local .sync-dot{background:#888780}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.sync-text{color:#5f5e5a}
+.sync-link{color:#185FA5;cursor:pointer;text-decoration:underline;font-size:11px;background:none;border:none;padding:0}
+/* ── Content ── */
+.content{padding:16px;display:flex;flex-direction:column;gap:12px}
+/* ── Project header ── */
+.proj-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px;background:#fff;border:1px solid #d3d1c7;border-radius:12px}
+.proj-name{font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:4px}
+.proj-dates{font-size:12px;color:#888780}
+.stat-progress{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+.prog-bar-wrap{width:140px;height:6px;background:#e8e6df;border-radius:3px;overflow:hidden}
+.prog-bar{height:100%;border-radius:3px;background:#185FA5;transition:width .3s}
+.prog-label{font-size:11px;color:#888780}
+/* ── Risk badges ── */
+.risk-high{background:#FADBD8;color:#A32D2D;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.risk-med{background:#FAEEDA;color:#854F0B;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.risk-low{background:#EAF3DE;color:#3B6D11;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700}
+/* ── Section cards (shared) ── */
+.section-card{background:#fff;border:1px solid #d3d1c7;border-radius:12px;overflow:hidden;margin-bottom:10px}
+.section-head{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid #d3d1c7;background:#f8f7f4}
+.section-head:hover{background:#f1efe8}
+.section-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.section-title{font-size:13px;font-weight:700;color:#1a1a1a;flex:1}
+.chevron{font-size:10px;color:#b4b2a9;transition:transform .2s;display:inline-block}
+.chevron.open{transform:rotate(90deg)}
+/* ── Risk view ── */
+.risk-section-card{background:#fff;border:1px solid #d3d1c7;border-radius:12px;padding:16px;margin-bottom:10px}
+.risk-section-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.risk-summary{font-size:13px;color:#5f5e5a;line-height:1.6;white-space:pre-wrap}
+.risk-summary-empty{font-size:13px;color:#b4b2a9;font-style:italic}
+.risk-add-btn{display:flex;align-items:center;gap:6px;padding:10px 14px;font-size:13px;color:#b4b2a9;cursor:pointer;border:1px dashed #b4b2a9;border-radius:12px;background:transparent;width:100%}
+.risk-add-btn:hover{background:#f1efe8;color:#888780}
+/* ── Tasks table ── */
+.tasks-table{width:100%;border-collapse:collapse}
+.tasks-table th{font-size:11px;font-weight:700;color:#888780;padding:8px 10px;text-align:left;border-bottom:1px solid #d3d1c7;background:#fafaf8}
+.tasks-table td{padding:7px 10px;font-size:12px;color:#1a1a1a;border-bottom:1px solid #eeece6;vertical-align:middle}
+.tasks-table tr:last-child td{border-bottom:none}
+.tasks-table tbody tr:hover td{background:#f8f7f4}
+.assignee-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.status-badge{padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
+.s-todo{background:#F1EFE8;color:#5F5E5A}
+.s-wip{background:#E6F1FB;color:#185FA5}
+.s-review{background:#FAEEDA;color:#854F0B}
+.s-done{background:#EAF3DE;color:#3B6D11}
+.mini-prog{width:52px;height:4px;background:#e8e6df;border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:3px}
+.mini-prog-fill{height:100%;border-radius:2px}
+.add-task-btn{font-size:11px;color:#b4b2a9;cursor:pointer;border:none;background:none;padding:3px 0}
+.add-task-btn:hover{color:#5f5e5a}
+/* ── Drag ── */
+.drag-handle{cursor:grab;color:#d3d1c7;font-size:14px;padding:0 3px;user-select:none}
+.drag-handle:hover{color:#888780}
+.tasks-table tr.drag-over td{border-top:2px solid #185FA5}
+.tasks-table tr.dragging{opacity:.4}
+/* ── Links ── */
+.task-link{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#185FA5;background:#E6F1FB;padding:2px 6px;border-radius:10px;text-decoration:none;margin:1px}
+.task-link:hover{background:#b5d4f4}
+/* ── Gantt ── */
+.gantt-container{overflow-x:auto;border:1px solid #d3d1c7;border-radius:12px;background:#fff}
+.gantt-header{display:flex;border-bottom:1px solid #d3d1c7;background:#f1efe8}
+.gantt-label-col{width:180px;flex-shrink:0;padding:8px 12px;font-size:11px;font-weight:700;color:#888780}
+.gantt-months{flex:1;display:flex}
+.gantt-month{flex:1;padding:8px 4px;font-size:11px;font-weight:700;color:#888780;text-align:center;border-left:1px solid #d3d1c7}
+.gantt-row{display:flex;align-items:center;border-bottom:1px solid #eeece6}
+.gantt-row:last-child{border-bottom:none}
+.gantt-row:hover{background:#f8f7f4}
+.gantt-task-label{width:180px;flex-shrink:0;padding:6px 12px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gantt-section-label{width:180px;flex-shrink:0;padding:6px 12px;font-size:11px;font-weight:700;background:#f8f7f4}
+.gantt-timeline{flex:1;position:relative;height:28px;display:flex;align-items:center}
+.gantt-section-timeline{flex:1;height:28px;background:#f8f7f4}
+.gantt-bar{position:absolute;height:13px;border-radius:3px;top:50%;transform:translateY(-50%)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #eeece6}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:#888780}
+.legend-dot{width:8px;height:8px;border-radius:2px}
+/* ── Findings ── */
+.finding-card{background:#fff;border:1px solid #d3d1c7;border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.finding-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px}
+.finding-num{font-size:11px;font-weight:700;color:#888780;flex-shrink:0;margin-top:2px}
+.finding-title{font-size:13px;font-weight:700;color:#1a1a1a;flex:1}
+.finding-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:11px;color:#888780}
+.finding-body{font-size:12px;color:#5f5e5a;line-height:1.6;margin-bottom:8px}
+.follow-badge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
+.fb-pending{background:#FADBD8;color:#A32D2D}
+.fb-inprog{background:#FAEEDA;color:#854F0B}
+.fb-done{background:#EAF3DE;color:#3B6D11}
+.fb-accepted{background:#F1EFE8;color:#5F5E5A}
+/* ── Assignments ── */
+.assign-card{background:#fff;border:1px solid #d3d1c7;border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.assign-card.closed{opacity:.65;border-style:dashed}
+.assign-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:10px}
+.assign-title{font-size:13px;font-weight:700;color:#1a1a1a;flex:1}
+.assign-tags{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+.tag-badge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.tag-all{background:#EEEDFE;color:#533AB7}
+/* ── Comments thread ── */
+.comment-thread{border-top:1px solid #eeece6;padding-top:10px;margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.comment-row{display:flex;gap:8px;align-items:flex-start}
+.comment-avatar{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;margin-top:1px}
+.comment-bubble{background:#f8f7f4;border-radius:0 8px 8px 8px;padding:6px 10px;flex:1}
+.comment-author{font-size:11px;font-weight:700;color:#1a3a5c}
+.comment-ts{font-size:10px;color:#b4b2a9;margin-left:6px}
+.comment-text{font-size:12px;color:#1a1a1a;margin-top:2px;white-space:pre-wrap}
+.comment-input-row{display:flex;gap:6px;margin-top:8px}
+.comment-input{flex:1;padding:7px 10px;font-size:12px;border:1px solid #c8c6be;border-radius:8px;background:#fafaf8;font-family:Arial,sans-serif}
+.comment-input:focus{outline:none;border-color:#185FA5}
+/* ── Buttons ── */
+.btn{padding:7px 14px;font-size:13px;border-radius:8px;cursor:pointer;font-family:inherit;transition:all .15s}
+.btn-primary{background:#1a3a5c;color:#fff;border:none;font-weight:700}
+.btn-primary:hover{background:#0e2640}
+.btn-secondary{background:#fff;color:#5f5e5a;border:1px solid #b4b2a9}
+.btn-secondary:hover{background:#f1efe8}
+.btn-danger{background:#fff;color:#A32D2D;border:1px solid #e4a0a0;margin-right:auto}
+.btn-danger:hover{background:#fadbd8}
+.btn-sm{padding:5px 10px;font-size:12px}
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(8,16,32,.72);display:flex;align-items:center;justify-content:center;z-index:999;backdrop-filter:blur(2px)}
+.modal{background:#fff;border-radius:16px;padding:24px;width:440px;max-width:96vw;box-shadow:0 24px 64px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.2);max-height:92vh;overflow-y:auto}
+.modal-wide{width:560px}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:18px;color:#1a3a5c;padding-bottom:12px;border-bottom:2px solid #f1efe8}
+.form-row{margin-bottom:14px}
+.form-label{font-size:12px;font-weight:700;color:#5f5e5a;margin-bottom:5px;display:block}
+.form-hint{font-size:11px;color:#b4b2a9;margin-top:4px}
+.form-input{width:100%;padding:9px 11px;font-size:13px;border:1px solid #c8c6be;border-radius:8px;background:#fafaf8;color:#1a1a1a;font-family:inherit;transition:border-color .15s}
+.form-input:focus{outline:none;border-color:#185FA5;background:#fff}
+.form-textarea{resize:vertical;min-height:80px}
+select.form-input{cursor:pointer}
+.form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:14px;border-top:1px solid #f1efe8}
+input[type=range]{width:60px;cursor:pointer;accent-color:#185FA5}
+/* ── Color picker ── */
+.color-picker{display:flex;flex-wrap:wrap;gap:9px;padding:4px 0}
+.color-swatch{width:30px;height:30px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:all .15s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.color-swatch:hover{transform:scale(1.18)}
+.color-swatch.selected{border-color:#1a1a1a;transform:scale(1.12);box-shadow:0 0 0 2px #fff,0 0 0 4px #1a1a1a}
+/* ── Risk picker ── */
+.risk-picker{display:flex;gap:8px}
+.risk-opt{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid transparent;transition:all .15s}
+.risk-opt.sel-high{background:#FADBD8;color:#A32D2D;border-color:#A32D2D}
+.risk-opt.sel-med{background:#FAEEDA;color:#854F0B;border-color:#854F0B}
+.risk-opt.sel-low{background:#EAF3DE;color:#3B6D11;border-color:#3B6D11}
+.risk-opt:not(.sel-high):not(.sel-med):not(.sel-low){background:#f1efe8;color:#888780;border-color:#d3d1c7}
+.risk-opt:hover{opacity:.8}
+/* ── Tag multi-select ── */
+.tag-multi{display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid #c8c6be;border-radius:8px;background:#fafaf8;min-height:44px}
+.tag-opt{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;background:#f1efe8;color:#5f5e5a;border:1px solid #d3d1c7;transition:all .12s}
+.tag-opt.selected{background:#1a3a5c;color:#fff;border-color:#1a3a5c}
+/* ── Team ── */
+.team-grid{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto}
+.team-member-row{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8f7f4;border-radius:8px;border:1px solid #eeece6}
+.member-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.member-info{flex:1;font-size:13px;font-weight:600}
+.member-loc{font-size:11px;color:#888780;margin-left:6px;font-weight:400}
+.member-btn{background:none;border:none;cursor:pointer;padding:3px 5px;border-radius:4px;font-size:13px;color:#b4b2a9;line-height:1}
+.member-btn:hover{background:#eeece6;color:#5f5e5a}
+/* ── Setup card ── */
+.setup-step{display:flex;gap:14px;margin-bottom:18px;align-items:flex-start}
+.step-num{width:26px;height:26px;border-radius:50%;background:#1a3a5c;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.step-body{flex:1}
+.step-title{font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:4px}
+.step-desc{font-size:12px;color:#5f5e5a;line-height:1.6}
+.step-desc a{color:#185FA5}
+.step-desc code{background:#f1efe8;padding:1px 5px;border-radius:4px;font-family:monospace;font-size:11px}
+
+/* ── Mobile task card (replaces table on small screens) ── */
+.task-card-m{padding:12px 14px;border-bottom:1px solid #eeece6;background:#fff}
+.task-card-m:last-of-type{border-bottom:none}
+.task-card-m:hover{background:#f8f7f4}
+.task-card-m-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:7px}
+.task-card-m-name{font-size:13px;font-weight:700;color:#1a1a1a;flex:1;line-height:1.4}
+.task-card-m-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;font-size:12px;color:#888780}
+.task-card-m-row label{font-size:10px;font-weight:700;color:#b4b2a9;min-width:28px}
+.task-card-m-prog{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.task-card-m-prog input[type=range]{flex:1;accent-color:#185FA5}
+.task-card-m-links{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.task-card-m-actions{display:flex;gap:10px;padding-top:6px;border-top:1px solid #f1efe8}
+
+/* ═══ MOBILE ═══ */
+:root{--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px)}
+@media(max-width:768px){
+body{-webkit-text-size-adjust:100%}
+.topbar{padding:calc(8px + var(--safe-top)) 12px 8px;flex-direction:column;gap:6px;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.topbar-logo-row{display:flex;align-items:center;justify-content:space-between}
+.topbar-right{display:flex;gap:5px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+.topbar-right::-webkit-scrollbar{display:none}
+.proj-tabs{padding:8px 12px 0;-webkit-overflow-scrolling:touch}
+.proj-tab{padding:7px 11px;font-size:12px}
+.view-nav{padding:0 10px;-webkit-overflow-scrolling:touch}
+.vnav-btn{padding:9px 10px;font-size:11px;flex-shrink:0}
+.sync-bar{padding:4px 12px;font-size:10px}
+.content{padding:10px 10px calc(10px + var(--safe-bot));gap:10px}
+.proj-header{flex-direction:column;gap:8px;padding:12px}
+.stat-progress{align-items:flex-start}
+.prog-bar-wrap{width:100%}
+.section-head{padding:10px 12px}
+/* tasks-table now uses JS card renderer on mobile; CSS override no longer needed */
+.task-actions-cell{display:flex;gap:10px;margin-top:6px;padding-top:6px;border-top:1px solid #f1efe8}
+.modal-overlay{align-items:flex-end;padding:0}
+.modal{width:100%!important;max-width:100%!important;border-radius:16px 16px 0 0;padding:20px 16px calc(20px + var(--safe-bot));max-height:90vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.modal-wide{width:100%!important}
+.btn{padding:10px 14px;font-size:14px;min-height:44px}
+.btn-sm{padding:8px 12px;font-size:12px;min-height:40px}
+.form-input,select.form-input,.comment-input{font-size:16px!important}
+textarea.form-input{font-size:16px!important;min-height:80px}
+.identity-dropdown{position:fixed;top:auto;bottom:0;left:0;right:0;border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.15)}
+.identity-option{padding:14px 20px;font-size:15px}
+.gantt-task-label,.gantt-section-label,.gantt-label-col{width:120px;font-size:11px}
+.comment-input-row{flex-direction:column;gap:6px}
+.comment-input-row button{width:100%}
+.tag-opt{padding:8px 12px;font-size:13px;min-height:36px}
+.color-swatch{width:34px;height:34px}
+.risk-opt{padding:10px 14px;font-size:13px;min-height:40px}
+.add-task-btn{font-size:13px;padding:5px 4px;min-height:36px;display:inline-flex;align-items:center}
+.drag-handle{display:none}
+.team-member-row{padding:10px 12px}
+.member-btn{padding:6px 8px;font-size:15px;min-width:36px;min-height:36px}
+.risk-section-card,.finding-card,.assign-card{padding:12px}
+.finding-meta{flex-direction:column;gap:3px}
+}
+@media(max-width:375px){
+.vnav-btn{padding:9px 8px;font-size:10px}
+.proj-tab{padding:6px 9px;font-size:11px}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo-row">
+    <div><span class="logo">內審項目管理</span><span class="logo-sub">Internal Audit PM</span></div>
+    <div class="identity-wrap" id="identity-wrap">
+      <div class="identity-picker" id="identity-picker" onclick="toggleIdentityDropdown()">
+        <div class="identity-avatar" id="identity-avatar"></div>
+        <span class="identity-name" id="identity-name">選擇身份</span>
+        <span class="identity-caret">▼</span>
+      </div>
+      <div class="identity-dropdown" id="identity-dropdown" style="display:none"></div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <button class="btn btn-secondary btn-sm" onclick="exportExcel()">📥 導出 Excel</button>
+    <button class="btn btn-secondary btn-sm" onclick="openModal('teamManager')">👥 管理成員</button>
+    <button class="btn btn-secondary btn-sm" onclick="openModal('cloudSetup')">☁️ Gitee 設定</button>
+    <button class="btn btn-primary btn-sm" onclick="openModal('newProject')">＋ 新增項目</button>
+  </div>
+</div>
+<div class="sync-bar sync-local" id="sync-bar">
+  <div class="sync-dot"></div>
+  <span class="sync-text" id="sync-text">本地模式（僅自己可見）</span>
+  <button class="sync-link" onclick="openModal('cloudSetup')">點此設定 Gitee 雲端共享 →</button>
+</div>
+<div class="proj-tabs" id="proj-tabs"></div>
+<div class="view-nav" id="view-nav"></div>
+<div class="content" id="content"></div>
+<div id="modal-root"></div>
+
+<script>
+/* ═══════════════════════════════════
+   CONSTANTS
+═══════════════════════════════════ */
+const COLORS_10=[
+  {hex:'#185FA5'},{hex:'#3B6D11'},{hex:'#993556'},{hex:'#854F0B'},{hex:'#A32D2D'},
+  {hex:'#533AB7'},{hex:'#0F6E56'},{hex:'#BA7517'},{hex:'#5F5E5A'},{hex:'#D85A30'},
+];
+const STATUSES=[
+  {key:'todo',label:'待開始',cls:'s-todo'},{key:'wip',label:'進行中',cls:'s-wip'},
+  {key:'review',label:'複核中',cls:'s-review'},{key:'done',label:'完成',cls:'s-done'},
+];
+const FOLLOW_STATUSES=[
+  {key:'pending',label:'待跟進',cls:'fb-pending'},{key:'inprog',label:'跟進中',cls:'fb-inprog'},
+  {key:'done',label:'已完成',cls:'fb-done'},{key:'accepted',label:'接受風險',cls:'fb-accepted'},
+];
+const RISK_LEVELS=[
+  {key:'high',label:'高風險',cls:'risk-high'},{key:'med',label:'中風險',cls:'risk-med'},{key:'low',label:'低風險',cls:'risk-low'},
+];
+const LOC_COLORS={
+  '香港':{bg:'#D6E8F7',tc:'#185FA5'},'河源':{bg:'#D4EDBA',tc:'#3B6D11'},
+  '廣東':{bg:'#D4EDBA',tc:'#3B6D11'},'成都':{bg:'#EEEDFE',tc:'#533AB7'},
+};
+const VIEWS=['risk','task','gantt','findings','assignments'];
+const VIEW_LABELS={'risk':'🔴 風險評估','task':'✅ 任務視圖','gantt':'📅 甘特圖','findings':'🔍 審計發現','assignments':'📌 指派任務'};
+
+const DEFAULT_TEAM=[
+  {id:'t1',name:'陳大文',loc:'香港'},{id:'t2',name:'李小明',loc:'香港'},
+  {id:'t3',name:'張偉',loc:'河源'},{id:'t4',name:'王芳',loc:'成都'},{id:'t5',name:'劉強',loc:'成都'},
+];
+const DEFAULT_PROJECTS=[
+  {id:1,name:'採購審計',type:'合規審計',start:'2025-03-01',end:'2025-05-31',
+   findings:[],assignments:[],
+   sections:[
+    {id:101,name:'供應商管理',color:'#185FA5',riskLevel:'high',summary:'供應商導入及績效管理存在一定合規風險，需重點審查。',open:true,tasks:[
+      {id:1001,name:'新供應商導入審查',assignee:'陳大文',start:'2025-03-01',end:'2025-03-15',status:'done',progress:100,notes:'檢視入廠標準及審批流程',links:[],comments:[]},
+      {id:1002,name:'供應商績效評分機制',assignee:'李小明',start:'2025-03-10',end:'2025-03-28',status:'done',progress:100,notes:'KPI設定、評分週期',links:[],comments:[]},
+      {id:1003,name:'供應商合同管理',assignee:'陳大文',start:'2025-03-20',end:'2025-04-05',status:'wip',progress:60,notes:'合同條款、續約流程',links:[],comments:[]},
+      {id:1004,name:'關聯方供應商識別',assignee:'張偉',start:'2025-04-01',end:'2025-04-15',status:'todo',progress:0,notes:'',links:[],comments:[]},
+    ]},
+    {id:102,name:'物料採購',color:'#3B6D11',riskLevel:'med',summary:'採購審批流程總體合規，個別緊急採購需加強監控。',open:true,tasks:[
+      {id:1005,name:'採購申請審批流程',assignee:'張偉',start:'2025-03-15',end:'2025-04-01',status:'wip',progress:75,notes:'',links:[],comments:[]},
+      {id:1006,name:'比價及招標合規性',assignee:'王芳',start:'2025-04-01',end:'2025-04-20',status:'todo',progress:0,notes:'三家報價原則',links:[],comments:[]},
+      {id:1007,name:'緊急採購授權測試',assignee:'劉強',start:'2025-04-10',end:'2025-04-25',status:'todo',progress:0,notes:'',links:[],comments:[]},
+    ]},
+    {id:103,name:'設備採購',color:'#993556',riskLevel:'low',summary:'',open:false,tasks:[
+      {id:1008,name:'資本支出審批測試',assignee:'李小明',start:'2025-04-20',end:'2025-05-10',status:'todo',progress:0,notes:'',links:[],comments:[]},
+      {id:1009,name:'固定資產登記核對',assignee:'王芳',start:'2025-05-01',end:'2025-05-20',status:'todo',progress:0,notes:'',links:[],comments:[]},
+      {id:1010,name:'報廢處置流程審核',assignee:'劉強',start:'2025-05-10',end:'2025-05-31',status:'todo',progress:0,notes:'',links:[],comments:[]},
+    ]},
+  ]},
+  {id:2,name:'IT系統審計',type:'IT審計',start:'2025-05-01',end:'2025-07-31',
+   findings:[],assignments:[],
+   sections:[
+    {id:201,name:'訪問權限管理',color:'#854F0B',riskLevel:'high',summary:'特權帳號管理薄弱，存在較高安全風險。',open:true,tasks:[
+      {id:2001,name:'用戶賬戶生命週期',assignee:'陳大文',start:'2025-05-01',end:'2025-05-20',status:'todo',progress:0,notes:'',links:[],comments:[]},
+      {id:2002,name:'特權賬戶審查',assignee:'張偉',start:'2025-05-15',end:'2025-06-01',status:'todo',progress:0,notes:'',links:[],comments:[]},
+    ]},
+    {id:202,name:'數據安全',color:'#A32D2D',riskLevel:'med',summary:'',open:true,tasks:[
+      {id:2003,name:'數據分類與標籤',assignee:'李小明',start:'2025-06-01',end:'2025-06-20',status:'todo',progress:0,notes:'',links:[],comments:[]},
+      {id:2004,name:'加密機制測試',assignee:'王芳',start:'2025-06-15',end:'2025-07-05',status:'todo',progress:0,notes:'',links:[],comments:[]},
+    ]},
+  ]},
+];
+
+/* ═══════════════════════════════════
+   STATE
+═══════════════════════════════════ */
+let projects=[], team=[], currentProject=0, currentView='risk', modalState=null, nextId=8000;
+let giteeToken='', giteeOwner='', giteeRepo='', cloudMode=false;
+let giteeSha='';
+const GITEE_FILE='audit-data.json';
+
+function migrate(p){
+  // ensure new fields exist on old data
+  if(!p.findings) p.findings=[];
+  if(!p.assignments) p.assignments=[];
+  p.sections.forEach(s=>{
+    if(!s.riskLevel) s.riskLevel='med';
+    if(s.summary===undefined) s.summary='';
+    s.tasks.forEach(t=>{
+      if(!t.links) t.links=[];
+      if(!t.comments) t.comments=[];
+    });
+  });
+  return p;
+}
+
+function loadLocal(){
+  try{
+    const p=localStorage.getItem('auditPM_projects');
+    const t=localStorage.getItem('auditPM_team');
+    projects=p?JSON.parse(p).map(migrate):JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
+    team=t?JSON.parse(t):JSON.parse(JSON.stringify(DEFAULT_TEAM));
+    giteeToken=localStorage.getItem('auditPM_giteeToken')||'';
+    giteeOwner=localStorage.getItem('auditPM_giteeOwner')||'';
+    giteeRepo =localStorage.getItem('auditPM_giteeRepo')||'';
+    giteeSha  =localStorage.getItem('auditPM_giteeSha')||'';
+    cloudMode=!!(giteeToken&&giteeOwner&&giteeRepo);
+  }catch(e){
+    projects=JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
+    team=JSON.parse(JSON.stringify(DEFAULT_TEAM));
+  }
+}
+function saveLocalCache(){
+  try{
+    localStorage.setItem('auditPM_projects',JSON.stringify(projects));
+    localStorage.setItem('auditPM_team',JSON.stringify(team));
+    if(giteeSha&&/^[0-9a-f]{20,}/i.test(giteeSha)) localStorage.setItem('auditPM_giteeSha',giteeSha);
+  }catch(e){}
+}
+function saveGiteeCreds(token,owner,repo){
+  giteeToken=token;giteeOwner=owner;giteeRepo=repo;cloudMode=!!(token&&owner&&repo);
+  localStorage.setItem('auditPM_giteeToken',token);
+  localStorage.setItem('auditPM_giteeOwner',owner);
+  localStorage.setItem('auditPM_giteeRepo',repo);
+}
+function clearGiteeCreds(){
+  giteeToken='';giteeOwner='';giteeRepo='';giteeSha='';cloudMode=false;
+  ['auditPM_giteeToken','auditPM_giteeOwner','auditPM_giteeRepo','auditPM_giteeSha'].forEach(k=>localStorage.removeItem(k));
+}
+
+/* ═══════════════════════════════════
+   GITEE CLOUD SYNC (unchanged)
+═══════════════════════════════════ */
+function giteeBase(){return`https://gitee.com/api/v5/repos/${encodeURIComponent(giteeOwner)}/${encodeURIComponent(giteeRepo)}/contents/${GITEE_FILE}`;}
+function toB64(obj){return btoa(unescape(encodeURIComponent(JSON.stringify(obj,null,0))));}
+function fromB64(str){if(!str||typeof str!=='string')throw new Error('fromB64: empty');return JSON.parse(decodeURIComponent(escape(atob(str.replace(/\n/g,'')))));}
+function setSyncStatus(state,msg){
+  const bar=document.getElementById('sync-bar'),txt=document.getElementById('sync-text');
+  if(!bar||!txt)return;
+  bar.className='sync-bar sync-'+state;txt.textContent=msg;
+  const lnk=bar.querySelector('.sync-link');if(lnk)lnk.style.display=cloudMode?'none':'inline';
+}
+async function cloudLoad(){
+  if(!cloudMode)return false;
+  setSyncStatus('warn','正在從 Gitee 載入數據…');
+  try{
+    const res=await fetch(giteeBase()+'?access_token='+encodeURIComponent(giteeToken));
+    if(res.status===404){setSyncStatus('warn','雲端尚無數據，正在初始化…');return await cloudSaveForce();}
+    if(!res.ok)throw new Error('HTTP '+res.status+' — '+await res.text());
+    const json=await res.json();
+    if(Array.isArray(json)){setSyncStatus('warn','雲端尚無數據文件，正在初始化…');return await cloudSaveForce();}
+    if(!json||typeof json.content!=='string'||json.content.trim()===''){
+      setSyncStatus('warn','雲端文件為空，正在寫入現有數據…');
+      if(json&&json.sha)giteeSha=json.sha;return await cloudSaveForce();
+    }
+    if(json.sha&&/^[0-9a-f]{20,}/i.test(json.sha))giteeSha=json.sha;
+    let data;try{data=fromB64(json.content);}catch(e2){setSyncStatus('warn','雲端數據損壞，正在重寫…');return await cloudSaveForce();}
+    if(data&&data.projects)projects=data.projects.map(migrate);
+    if(data&&data.team)team=data.team;
+    saveLocalCache();setSyncStatus('ok',`Gitee 同步成功 · ${new Date().toLocaleTimeString('zh-HK')}`);
+    renderIdentityPicker();return true;
+  }catch(e){setSyncStatus('err','載入失敗：'+e.message);addDiagLog('cloudLoad error: '+e.message);return false;}
+}
+async function cloudSaveForce(){
+  try{
+    const body={access_token:giteeToken,content:toB64({projects,team}),message:'audit-pm update'};
+    let method='POST',url=giteeBase();
+    const validSha=/^[0-9a-f]{20,}/i.test(giteeSha);
+    if(validSha){body.sha=giteeSha;method='PUT';}
+    const res=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!res.ok)throw new Error('HTTP '+res.status+' — '+await res.text());
+    const json=await res.json();
+    giteeSha=json.content?.sha||giteeSha;saveLocalCache();
+    setSyncStatus('ok',`已儲存至 Gitee · ${new Date().toLocaleTimeString('zh-HK')}`);return true;
+  }catch(e){setSyncStatus('err','儲存失敗：'+e.message);addDiagLog('cloudSaveForce error: '+e.message);return false;}
+}
+async function cloudSave(){saveLocalCache();if(!cloudMode)return;setSyncStatus('warn','儲存中…');await cloudSaveForce();}
+
+let diagLog=[];
+function addDiagLog(msg){diagLog.push(`[${new Date().toLocaleTimeString()}] ${msg}`);}
+async function runDiagnostics(){
+  diagLog=[];const out=document.getElementById('diag-out');if(out)out.textContent='檢測中…';
+  addDiagLog('開始診斷');
+  addDiagLog(`cloudMode=${cloudMode}, owner="${giteeOwner}", repo="${giteeRepo}", token長度=${giteeToken.length}, sha="${giteeSha}"`);
+  try{const r=await fetch('https://gitee.com/api/v5/user?access_token='+encodeURIComponent(giteeToken));const j=await r.json();if(r.ok)addDiagLog('✅ Token 有效，帳號：'+j.login);else addDiagLog('❌ Token 無效：'+r.status);}catch(e){addDiagLog('❌ 無法連接 Gitee：'+e.message);}
+  try{const r=await fetch(`https://gitee.com/api/v5/repos/${encodeURIComponent(giteeOwner)}/${encodeURIComponent(giteeRepo)}?access_token=${encodeURIComponent(giteeToken)}`);if(r.ok)addDiagLog('✅ 倉庫存在');else addDiagLog('❌ 倉庫不存在：'+r.status);}catch(e){addDiagLog('❌ 倉庫查詢失敗：'+e.message);}
+  try{
+    const r=await fetch(giteeBase()+'?access_token='+encodeURIComponent(giteeToken));
+    if(r.ok){const j=await r.json();if(Array.isArray(j)){giteeSha='';addDiagLog('⚠️ 目錄列表，文件未建立，正在初始化…');const ok=await cloudSaveForce();if(ok)addDiagLog('✅ 文件已建立！請刷新頁面。');}
+    else{const sha=(j&&j.sha&&/^[0-9a-f]{20,}/i.test(j.sha))?j.sha:'';giteeSha=sha;if(sha)addDiagLog('✅ 文件存在，sha='+sha.slice(0,8)+'…');else{addDiagLog('⚠️ sha為空，重新初始化…');const ok=await cloudSaveForce();if(ok)addDiagLog('✅ 重新初始化成功！');}}}
+    else if(r.status===404){giteeSha='';addDiagLog('⚠️ 文件不存在，正在建立…');const ok=await cloudSaveForce();if(ok)addDiagLog('✅ 文件已建立！');}
+    else addDiagLog('❌ 文件查詢失敗：HTTP '+r.status);
+  }catch(e){addDiagLog('❌ 文件查詢異常：'+e.message);}
+  addDiagLog('診斷完畢');if(out)out.textContent=diagLog.join('\n');
+}
+
+/* ═══════════════════════════════════
+   HELPERS
+═══════════════════════════════════ */
+function getProject(){return projects[currentProject];}
+function statusObj(k){return STATUSES.find(s=>s.key===k)||STATUSES[0];}
+function followObj(k){return FOLLOW_STATUSES.find(s=>s.key===k)||FOLLOW_STATUSES[0];}
+function riskObj(k){return RISK_LEVELS.find(r=>r.key===k)||RISK_LEVELS[1];}
+function genId(){return ++nextId;}
+function overallProgress(p){const ts=p.sections.reduce((a,s)=>a+s.tasks.length,0);if(!ts)return 0;return Math.round(p.sections.reduce((a,s)=>a+s.tasks.reduce((b,t)=>b+t.progress,0),0)/ts);}
+function doneTasks(p){return p.sections.reduce((a,s)=>a+s.tasks.filter(t=>t.status==='done').length,0);}
+function totalTasks(p){return p.sections.reduce((a,s)=>a+s.tasks.length,0);}
+function sectionPct(s){if(!s.tasks.length)return 0;return Math.round(s.tasks.reduce((a,t)=>a+t.progress,0)/s.tasks.length);}
+function fmtDate(d){if(!d)return'';const dt=new Date(d);return`${dt.getFullYear()}/${dt.getMonth()+1}/${dt.getDate()}`;}
+function fmtTs(ts){const d=new Date(ts);return`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;}
+function memberColor(name){const m=team.find(m=>m.name===name);if(!m)return{bg:'#eee',tc:'#888'};return LOC_COLORS[m.loc]||{bg:'#E8E6F0',tc:'#533AB7'};}
+function memberInitials(name){if(!name)return'?';if(/[a-zA-Z]/.test(name)){const pts=name.trim().split(/\s+/);if(pts.length>=2)return(pts[0][0]+pts[pts.length-1][0]).toUpperCase();return pts[0].slice(0,2).toUpperCase();}if(name.length<=2)return name;return name[0]+name[name.length-1];}
+function workdays(s,e){let d=new Date(s),end=new Date(e),n=0;while(d<=end){const w=d.getDay();if(w>0&&w<6)n++;d.setDate(d.getDate()+1);}return n;}
+function riskBadge(level){const r=riskObj(level);return`<span class="${r.cls.replace('risk-','risk-')}">${r.label}</span>`;}
+/* ── Identity / current user ── */
+let _currentUser = localStorage.getItem('auditPM_identity') || '';
+function currentUser(){return _currentUser || (team.length ? team[0].name : '我');}
+function setCurrentUser(name){
+  _currentUser=name;
+  localStorage.setItem('auditPM_identity', name);
+  renderIdentityPicker();
+  // update any open comment dropdowns to reflect new identity
+  document.querySelectorAll('[id^="ca-"]').forEach(sel=>{
+    for(let i=0;i<sel.options.length;i++){if(sel.options[i].value===name){sel.selectedIndex=i;break;}}
+  });
+  // update creator dropdown in open modal
+  const mc=document.getElementById('m-creator');
+  if(mc){for(let i=0;i<mc.options.length;i++){if(mc.options[i].value===name){mc.selectedIndex=i;break;}}}
+}
+function renderIdentityPicker(){
+  const cur=currentUser();
+  const mc=memberColor(cur);
+  const av=document.getElementById('identity-avatar');
+  const nm=document.getElementById('identity-name');
+  if(av){av.style.background=mc.bg;av.style.color=mc.tc;av.textContent=memberInitials(cur);}
+  if(nm) nm.textContent=cur;
+  // rebuild dropdown
+  const dd=document.getElementById('identity-dropdown');
+  if(!dd)return;
+  dd.innerHTML=team.map(m=>{
+    const mc2=memberColor(m.name);
+    return`<div class="identity-option ${m.name===cur?'active':''}" onclick="setCurrentUser('${m.name}');toggleIdentityDropdown()">
+      <div class="identity-avatar" style="background:${mc2.bg};color:${mc2.tc}">${memberInitials(m.name)}</div>
+      <span>${m.name}</span><span style="font-size:10px;color:#888780;margin-left:4px">${m.loc}</span>
+    </div>`;
+  }).join('');
+}
+function toggleIdentityDropdown(){
+  const dd=document.getElementById('identity-dropdown');
+  if(!dd)return;
+  const open=dd.style.display==='none';
+  dd.style.display=open?'block':'none';
+  if(open){
+    // close on outside click
+    setTimeout(()=>document.addEventListener('click',function h(e){
+      if(!document.getElementById('identity-wrap')?.contains(e.target)){
+        dd.style.display='none';document.removeEventListener('click',h);}
+    }),10);
+  }
+}
+
+/* ═══════════════════════════════════
+   RENDER SCAFFOLDING
+═══════════════════════════════════ */
+function renderProjTabs(){
+  document.getElementById('proj-tabs').innerHTML=
+    projects.map((p,i)=>`<div class="proj-tab ${i===currentProject?'active':''}" onclick="switchProject(${i})">${p.name}</div>`).join('')+
+    `<div class="add-proj-tab" onclick="openModal('newProject')">＋</div>`;
+}
+function renderViewNav(){
+  document.getElementById('view-nav').innerHTML=
+    VIEWS.map(v=>`<button class="vnav-btn ${v===currentView?'active':''}" onclick="setView('${v}')">${VIEW_LABELS[v]}</button>`).join('');
+}
+function switchProject(i){currentProject=i;renderProjTabs();renderContent();}
+function setView(v){currentView=v;renderViewNav();renderContent();}
+function toggleSection(sid){const s=getProject().sections.find(s=>s.id===sid);if(s){s.open=!s.open;cloudSave();renderContent();}}
+
+function renderContent(){
+  renderProjTabs();renderViewNav();
+  const p=getProject();
+  if(!p){document.getElementById('content').innerHTML='<div style="padding:32px;text-align:center;color:#888780">請新增審計項目</div>';return;}
+  const prog=overallProgress(p);const st=statusObj(prog>=100?'done':prog>0?'wip':'todo');
+  let html=`<div class="proj-header">
+    <div style="flex:1">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div class="proj-name">${p.name}</div>
+        <button class="add-task-btn" style="font-size:12px" onclick="openModal('editProject')">✏️ 編輯項目</button>
+      </div>
+      <div class="proj-dates">📅 ${fmtDate(p.start)} → ${fmtDate(p.end)} &nbsp;|&nbsp; 類型：${p.type} &nbsp;|&nbsp; ${doneTasks(p)}/${totalTasks(p)} 任務完成</div>
+    </div>
+    <div class="stat-progress">
+      <div class="prog-label">整體進度 ${prog}%</div>
+      <div class="prog-bar-wrap"><div class="prog-bar" style="width:${prog}%"></div></div>
+      <div style="margin-top:4px"><span class="status-badge ${st.cls}">${st.label}</span></div>
+    </div>
+  </div>`;
+  if(currentView==='risk')      html+=renderRisk(p);
+  else if(currentView==='task') html+=renderTaskView(p);
+  else if(currentView==='gantt')html+=renderGantt(p);
+  else if(currentView==='findings')html+=renderFindings(p);
+  else if(currentView==='assignments')html+=renderAssignments(p);
+  document.getElementById('content').innerHTML=html;
+  if('ontouchstart' in window)setTimeout(initTouchDrag,80);
+}
+
+/* ═══════════════════════════════════
+   RISK VIEW
+═══════════════════════════════════ */
+function renderRisk(p){
+  let html='<div>';
+  p.sections.forEach(s=>{
+    const r=riskObj(s.riskLevel);
+    html+=`<div class="risk-section-card">
+      <div class="risk-section-top">
+        <div class="section-dot" style="background:${s.color}"></div>
+        <div style="font-size:14px;font-weight:700;color:#1a1a1a;flex:1">${s.name}</div>
+        <span class="${r.cls}">${r.label}</span>
+        <button class="add-task-btn" style="font-size:12px;margin-left:8px" onclick="openModal('editRiskSection',${s.id})">✏️ 編輯</button>
+      </div>
+      <div style="font-size:11px;color:#888780;margin-bottom:6px">${s.tasks.length} 個審計任務 &nbsp;|&nbsp; 完成率 ${sectionPct(s)}%</div>
+      ${s.summary?`<div class="risk-summary">${escHtml(s.summary)}</div>`:`<div class="risk-summary-empty">（尚未填寫風險摘要）</div>`}
+    </div>`;
+  });
+  html+=`<button class="risk-add-btn" onclick="openModal('newRiskSection')">＋ 新增版塊</button>`;
+  html+='</div>';
+  return html;
+}
+
+/* ═══════════════════════════════════
+   TASK VIEW
+═══════════════════════════════════ */
+/* mobile card renderer — avoids unreliable display:block on iOS table */
+function renderTaskViewMobile(p){
+  let html='<div style="display:flex;flex-direction:column;gap:0">';
+  p.sections.forEach(s=>{
+    const r=riskObj(s.riskLevel);
+    html+=`<div class="section-card">
+      <div class="section-head" onclick="toggleSection(${s.id})">
+        <div class="section-dot" style="background:${s.color}"></div>
+        <div class="section-title">${s.name}</div>
+        <span class="${r.cls}" style="font-size:10px;padding:1px 7px;margin-right:4px">${r.label}</span>
+        <div style="font-size:11px;color:#888780;margin-right:6px">${s.tasks.length} 個 | ${sectionPct(s)}%</div>
+        <div class="chevron ${s.open?'open':''}">▶</div>
+      </div>`;
+    if(s.open){
+      s.tasks.forEach(t=>{
+        const st2=statusObj(t.status);const mc=memberColor(t.assignee);
+        const commentCount=(t.comments||[]).length;
+        const linksHtml=(t.links||[]).map(l=>`<a class="task-link" href="${escAttr(l.url)}" target="_blank">🔗${escHtml(l.label||l.url.slice(0,12))}</a>`).join('');
+        html+=`<div class="task-card-m">
+          <div class="task-card-m-header">
+            <div class="task-card-m-name">${escHtml(t.name)}</div>
+            <span class="status-badge ${st2.cls}" onclick="cycleStatus(${s.id},${t.id})" style="flex-shrink:0">${st2.label}</span>
+          </div>
+          <div class="task-card-m-row">
+            <label>負責人</label>
+            <span class="assignee-badge" style="background:${mc.bg};color:${mc.tc};font-size:11px">
+              <span style="width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block"></span>
+              ${t.assignee}</span>
+          </div>
+          <div class="task-card-m-row">
+            <label>日期</label>
+            <span>${fmtDate(t.start)}</span>
+            <span style="color:#d3d1c7">→</span>
+            <span>${fmtDate(t.end)}</span>
+          </div>
+          <div class="task-card-m-prog">
+            <div class="mini-prog" style="width:40px"><div class="mini-prog-fill" style="width:${t.progress}%;background:${s.color}"></div></div>
+            <span style="font-size:11px;color:#888780;min-width:28px">${t.progress}%</span>
+            <input type="range" min="0" max="100" step="10" value="${t.progress}" onchange="updateProgress(${s.id},${t.id},this.value)">
+          </div>
+          ${linksHtml?`<div class="task-card-m-links">${linksHtml}<button class="add-task-btn" onclick="openModal('editLinks',${s.id},${t.id})">＋🔗</button></div>`:''}
+          ${t.notes?`<div style="font-size:11px;color:#b4b2a9;margin-bottom:5px">${escHtml(t.notes.slice(0,40))}${t.notes.length>40?'…':''}</div>`:''}
+          <div class="task-card-m-actions">
+            <button class="add-task-btn" onclick="openModal('taskComments',${s.id},${t.id})" style="color:${commentCount>0?'#185FA5':'#b4b2a9'}">
+              💬${commentCount>0?` (${commentCount})`:''}</button>
+            ${!linksHtml?`<button class="add-task-btn" onclick="openModal('editLinks',${s.id},${t.id})">＋🔗</button>`:''}
+            <button class="add-task-btn" onclick="openModal('editTask',${s.id},${t.id})">✏️ 編輯</button>
+          </div>
+        </div>`;
+      });
+      html+=`<div style="padding:10px 14px;border-top:1px solid #eeece6">
+        <button class="add-task-btn" onclick="openModal('newTask',${s.id})">＋ 新增任務</button>
+      </div>`;
+    }
+    html+='</div>';
+  });
+  html+=`<button class="add-section-btn" onclick="openModal('newSection')">＋ 新增版塊（請到風險評估視圖新增）</button>`;
+  html+='</div>';
+  return html;
+}
+
+function renderTaskView(p){
+  if(window.innerWidth<=768) return renderTaskViewMobile(p);
+  let html='<div style="display:flex;flex-direction:column;gap:0">';
+  p.sections.forEach(s=>{
+    const r=riskObj(s.riskLevel);
+    html+=`<div class="section-card">
+      <div class="section-head" onclick="toggleSection(${s.id})">
+        <div class="section-dot" style="background:${s.color}"></div>
+        <div class="section-title">${s.name}</div>
+        <span class="${r.cls}" style="font-size:10px;padding:1px 7px;margin-right:4px">${r.label}</span>
+        <div style="font-size:11px;color:#888780;margin-right:6px">${s.tasks.length} 個任務 | ${sectionPct(s)}%</div>
+        <div class="chevron ${s.open?'open':''}">▶</div>
+      </div>`;
+    if(s.open){
+      html+=`<table class="tasks-table"><thead><tr>
+        <th style="width:22%">任務</th><th style="width:12%">負責人</th>
+        <th style="width:9%">開始</th><th style="width:9%">截止</th>
+        <th style="width:8%">狀態</th><th style="width:12%">進度</th>
+        <th style="width:16%">附件連結</th><th style="width:12%">留言/備注</th>
+      </tr></thead><tbody>`;
+      s.tasks.forEach(t=>{
+        const st2=statusObj(t.status);const mc=memberColor(t.assignee);
+        const commentCount=(t.comments||[]).length;
+        const linksHtml=(t.links||[]).map(l=>`<a class="task-link" href="${escAttr(l.url)}" target="_blank">🔗${escHtml(l.label||l.url.slice(0,15))}</a>`).join('');
+        html+=`<tr draggable="true" data-sid="${s.id}" data-tid="${t.id}"
+          ondragstart="dragStart(event,${s.id},${t.id})" ondragover="dragOver(event)"
+          ondragleave="dragLeave(event)" ondrop="dragDrop(event,${s.id},${t.id})" ondragend="dragEnd(event)">
+          <td data-label="任務"><span class="drag-handle">⠿</span> <span style="font-weight:600">${t.name}</span></td>
+          <td data-label="負責人"><span class="assignee-badge" style="background:${mc.bg};color:${mc.tc}">
+            <span style="width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block;flex-shrink:0"></span>
+            ${t.assignee}</span></td>
+          <td data-label="開始" style="font-size:11px;color:#888780">${fmtDate(t.start)}</td>
+          <td data-label="截止" style="font-size:11px;color:#888780">${fmtDate(t.end)}</td>
+          <td data-label="狀態"><span class="status-badge ${st2.cls}" onclick="cycleStatus(${s.id},${t.id})" title="點擊切換">${st2.label}</span></td>
+          <td data-label="進度">
+            <div style="display:flex;align-items:center;gap:3px;margin-bottom:2px">
+              <div class="mini-prog"><div class="mini-prog-fill" style="width:${t.progress}%;background:${s.color}"></div></div>
+              <span style="font-size:11px;color:#888780">${t.progress}%</span>
+            </div>
+            <input type="range" min="0" max="100" step="10" value="${t.progress}" onchange="updateProgress(${s.id},${t.id},this.value)">
+          </td>
+          <td data-label="附件" style="font-size:11px">
+            ${linksHtml}
+            <button class="add-task-btn" onclick="openModal('editLinks',${s.id},${t.id})">＋🔗</button>
+          </td>
+          <td><div class="task-actions-cell">
+            <button class="add-task-btn" onclick="openModal('taskComments',${s.id},${t.id})" style="color:${commentCount>0?'#185FA5':'#b4b2a9'}">💬${commentCount>0?` ${commentCount}`:''}</button>
+            <button class="add-task-btn" onclick="openModal('editTask',${s.id},${t.id})">✏️ 編輯</button>
+            ${t.notes?`<span style="color:#b4b2a9;font-size:11px">${escHtml(t.notes.slice(0,16))}</span>`:''}
+          </div></td>
+        </tr>`;
+      });
+      html+=`<tr><td colspan="8" style="padding:6px 12px">
+        <button class="add-task-btn" onclick="openModal('newTask',${s.id})">＋ 新增任務</button>
+      </td></tr></tbody></table>`;
+    }
+    html+='</div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+/* ═══════════════════════════════════
+   GANTT VIEW
+═══════════════════════════════════ */
+function renderGantt(p){
+  const allD=[];p.sections.forEach(s=>s.tasks.forEach(t=>{allD.push(t.start,t.end);}));
+  if(!allD.length)return'<div style="padding:24px;color:#888780;font-size:13px">暫無任務</div>';
+  const minD=new Date(Math.min(...allD.map(d=>new Date(d))));
+  const maxD=new Date(Math.max(...allD.map(d=>new Date(d))));
+  minD.setDate(1);maxD.setMonth(maxD.getMonth()+1,0);
+  const months=[];let cur=new Date(minD);
+  while(cur<=maxD){months.push({y:cur.getFullYear(),m:cur.getMonth()});cur.setMonth(cur.getMonth()+1);}
+  const total=(maxD-minD)/86400000+1;
+  const pct=d=>Math.max(0,Math.min(100,(new Date(d)-minD)/86400000/total*100));
+  let html=`<div class="gantt-container"><div style="min-width:540px">
+    <div class="gantt-header">
+      <div class="gantt-label-col">任務</div>
+      <div class="gantt-months">${months.map(m=>`<div class="gantt-month">${m.y}/${String(m.m+1).padStart(2,'0')}</div>`).join('')}</div>
+    </div>`;
+  p.sections.forEach(s=>{
+    html+=`<div class="gantt-row"><div class="gantt-section-label" style="color:${s.color}">${s.name}</div><div class="gantt-section-timeline"></div></div>`;
+    s.tasks.forEach(t=>{
+      const l=pct(t.start),w=Math.max(0.8,pct(t.end)-l);
+      const op=t.status==='done'?1:t.status==='wip'?.8:.4;
+      const wd=workdays(t.start,t.end);
+      html+=`<div class="gantt-row">
+        <div class="gantt-task-label" title="${t.name} (${t.assignee})">${t.name}</div>
+        <div class="gantt-timeline">
+          <div class="gantt-bar" style="left:${l}%;width:${w}%;background:${s.color};opacity:${op}"></div>
+          <div style="position:absolute;left:calc(${l}% + 4px);top:50%;transform:translateY(-50%);font-size:9px;font-weight:700;color:#fff;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.4)">${w>3?wd+'d':''}</div>
+        </div>
+      </div>`;
+    });
+  });
+  html+=`</div><div class="legend">
+    ${p.sections.map(s=>`<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div>${s.name}</div>`).join('')}
+    ${STATUSES.map(s=>`<div class="legend-item"><div class="legend-dot ${s.cls}" style="border-radius:50%"></div>${s.label}</div>`).join('')}
+  </div></div>`;
+  return html;
+}
+
+/* ═══════════════════════════════════
+   FINDINGS VIEW
+═══════════════════════════════════ */
+function renderFindings(p){
+  let html=`<div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+      <button class="btn btn-primary btn-sm" onclick="openModal('newFinding')">＋ 新增審計發現</button>
+    </div>`;
+  if(!p.findings||!p.findings.length){
+    html+='<div style="padding:32px;text-align:center;color:#888780;background:#fff;border-radius:12px;border:1px solid #d3d1c7">暫無審計發現記錄</div>';
+  } else {
+    // Build ordered section list: project sections first (in order), then "其他"
+    const sectionOrder=[...p.sections.map(s=>s.name),'其他'];
+    // Group findings by sectionName
+    const grouped={};
+    p.findings.forEach(f=>{
+      const key=sectionOrder.includes(f.sectionName)?f.sectionName:'其他';
+      if(!grouped[key])grouped[key]=[];
+      grouped[key].push(f);
+    });
+    // Global sequential numbering
+    let seqNum=0;
+    sectionOrder.forEach(secName=>{
+      if(!grouped[secName]||!grouped[secName].length)return;
+      // section header
+      const secObj=p.sections.find(s=>s.name===secName);
+      const dotColor=secObj?secObj.color:'#888780';
+      html+=`<div style="display:flex;align-items:center;gap:8px;margin:14px 0 6px;padding-bottom:6px;border-bottom:2px solid #f1efe8">
+        <div style="width:9px;height:9px;border-radius:50%;background:${dotColor};flex-shrink:0"></div>
+        <span style="font-size:13px;font-weight:700;color:#1a3a5c">${escHtml(secName)}</span>
+        <span style="font-size:11px;color:#888780">${grouped[secName].length} 項發現</span>
+      </div>`;
+      grouped[secName].forEach(f=>{
+        seqNum++;
+        const r=riskObj(f.riskLevel);const fo=followObj(f.followStatus);
+        const commentCount=(f.comments||[]).length;
+        html+=`<div class="finding-card">
+          <div class="finding-top">
+            <div class="finding-num">F-${String(seqNum).padStart(3,'0')}</div>
+            <div class="finding-title">${escHtml(f.description)}</div>
+            <span class="${r.cls}">${r.label}</span>
+            <button class="add-task-btn" onclick="openModal('editFinding',${f.id})" style="margin-left:8px">✏️</button>
+          </div>
+          <div class="finding-meta">
+            <span>責任人：${escHtml(f.assignee||'—')}</span>
+            <span>|</span><span>整改期限：${f.deadline?fmtDate(f.deadline):'—'}</span>
+            <span>|</span><span class="follow-badge ${fo.cls}">${fo.label}</span>
+          </div>
+          ${f.recommendation?`<div class="finding-body"><strong style="color:#1a3a5c">建議：</strong>${escHtml(f.recommendation)}</div>`:''}
+          ${f.mgmtReply?`<div class="finding-body"><strong style="color:#854F0B">管理層回覆：</strong>${escHtml(f.mgmtReply)}</div>`:''}
+          <button class="add-task-btn" onclick="openModal('findingComments',${f.id})" style="color:${commentCount>0?'#185FA5':'#b4b2a9'}">
+            💬 跟進留言${commentCount>0?` (${commentCount})`:''}</button>
+        </div>`;
+      });
+    });
+  }
+  html+='</div>';
+  return html;
+}
+
+/* ═══════════════════════════════════
+   ASSIGNMENTS VIEW
+═══════════════════════════════════ */
+function renderAssignments(p){
+  const open=(p.assignments||[]).filter(a=>!a.closed);
+  const closed=(p.assignments||[]).filter(a=>a.closed);
+  let html=`<div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+      <button class="btn btn-primary btn-sm" onclick="openModal('newAssignment')">＋ 新增指派任務</button>
+    </div>`;
+  if(!open.length&&!closed.length){
+    html+='<div style="padding:32px;text-align:center;color:#888780;background:#fff;border-radius:12px;border:1px solid #d3d1c7">暫無指派任務</div>';
+  }
+  [...open,...closed].forEach(a=>{
+    const msgCount=(a.messages||[]).length;
+    const tagHtml=a.taggedTo.map(n=>n==='all'?
+      `<span class="tag-badge tag-all">@ 全部成員</span>`:
+      (()=>{const mc=memberColor(n);return`<span class="tag-badge" style="background:${mc.bg};color:${mc.tc}">@${n}</span>`;})()
+    ).join('');
+    html+=`<div class="assign-card ${a.closed?'closed':''}">
+      <div class="assign-top">
+        <div style="flex:1">
+          <div class="assign-title">${escHtml(a.title)}</div>
+          <div style="font-size:11px;color:#888780;margin-top:2px">由 ${a.createdBy} 於 ${fmtTs(a.createdTs)} 創建</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;flex-shrink:0">
+          <input type="checkbox" ${a.closed?'checked':''} onchange="toggleAssignment(${a.id})" style="width:14px;height:14px">
+          已完結
+        </label>
+        <button class="add-task-btn" onclick="openModal('editAssignment',${a.id})" style="margin-left:6px">✏️</button>
+      </div>
+      <div class="assign-tags">${tagHtml}</div>
+      ${renderCommentThread(a.messages||[], 'assignment', a.id)}
+    </div>`;
+  });
+  html+='</div>';
+  return html;
+}
+
+function renderCommentThread(comments, type, parentId){
+  let html='<div class="comment-thread">';
+  comments.forEach(c=>{
+    const mc=memberColor(c.author);
+    html+=`<div class="comment-row">
+      <div class="comment-avatar" style="background:${mc.bg};color:${mc.tc}">${memberInitials(c.author)}</div>
+      <div class="comment-bubble">
+        <span class="comment-author">${escHtml(c.author)}</span>
+        <span class="comment-ts">${fmtTs(c.ts)}</span>
+        <div class="comment-text">${escHtml(c.text)}</div>
+      </div>
+    </div>`;
+  });
+  // Input row — auto-uses current identity, still allows per-comment override
+  const cur=currentUser();const mc2=memberColor(cur);
+  const memberOpts=team.map(m=>`<option value="${m.name}" ${m.name===cur?'selected':''}>${m.name}</option>`).join('');
+  html+=`<div style="margin-top:8px">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      <div class="identity-avatar" style="background:${mc2.bg};color:${mc2.tc};width:20px;height:20px;flex-shrink:0">${memberInitials(cur)}</div>
+      <select class="comment-input" id="ca-${type}-${parentId}" style="flex:0 0 auto;width:auto;padding:4px 8px;font-size:12px;border-radius:20px">${memberOpts}</select>
+    </div>
+    <div class="comment-input-row">
+      <input class="comment-input" id="ci-${type}-${parentId}" placeholder="留言… (Enter 發送)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();postComment('${type}',${parentId});}">
+      <button class="btn btn-primary btn-sm" onclick="postComment('${type}',${parentId})">發送</button>
+    </div>
+  </div></div>`;
+  return html;
+}
+
+/* ═══════════════════════════════════
+   ACTIONS
+═══════════════════════════════════ */
+function escHtml(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function escAttr(s){return escHtml(s);}
+
+function cycleStatus(sid,tid){
+  const s=getProject().sections.find(s=>s.id===sid);const t=s&&s.tasks.find(t=>t.id===tid);if(!t)return;
+  const idx=STATUSES.findIndex(s=>s.key===t.status);t.status=STATUSES[(idx+1)%STATUSES.length].key;
+  if(t.status==='done')t.progress=100;if(t.status==='todo')t.progress=0;
+  cloudSave();renderContent();
+}
+function updateProgress(sid,tid,val){
+  const s=getProject().sections.find(s=>s.id===sid);const t=s&&s.tasks.find(t=>t.id===tid);if(!t)return;
+  t.progress=parseInt(val);t.status=t.progress===100?'done':t.progress>0?'wip':'todo';
+  cloudSave();renderContent();
+}
+function toggleAssignment(aid){
+  const a=getProject().assignments.find(a=>a.id===aid);if(!a)return;a.closed=!a.closed;cloudSave();renderContent();
+}
+
+function postComment(type, parentId){
+  const inp=document.getElementById(`ci-${type}-${parentId}`);if(!inp||!inp.value.trim())return;
+  const text=inp.value.trim();const p=getProject();
+  const authorSel=document.getElementById(`ca-${type}-${parentId}`);
+  const author=authorSel?authorSel.value:currentUser();
+  const comment={id:genId(),author,text,ts:Date.now()};
+  if(type==='assignment'){
+    const a=p.assignments.find(a=>a.id===parentId);if(!a)return;
+    if(!a.messages)a.messages=[];a.messages.push(comment);
+  } else if(type==='finding'){
+    const f=p.findings.find(f=>f.id===parentId);if(!f)return;
+    if(!f.comments)f.comments=[];f.comments.push(comment);
+    closeModal();
+  } else if(type==='task'){
+    // Use modalState.sid for precise section→task lookup (prevents wrong-task bug)
+    const _sid=Number(modalState&&modalState.sid!=null?modalState.sid:-1);
+    const _tid=Number(parentId);
+    let found=null;
+    if(_sid>=0){
+      const _s=p.sections.find(s=>Number(s.id)===_sid);
+      if(_s) found=_s.tasks.find(t=>Number(t.id)===_tid)||null;
+    }
+    // fallback: search all sections (in case modalState is stale)
+    if(!found) p.sections.forEach(s=>s.tasks.forEach(t=>{if(Number(t.id)===_tid)found=t;}));
+    if(!found)return;
+    if(!found.comments)found.comments=[];found.comments.push(comment);
+    closeModal();
+  }
+  cloudSave();renderContent();
+}
+
+/* ── Drag-to-reorder ── */
+let _dragSid=null,_dragTid=null;
+function dragStart(e,sid,tid){_dragSid=sid;_dragTid=tid;e.currentTarget.classList.add('dragging');e.dataTransfer.effectAllowed='move';}
+function dragOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('drag-over');}
+function dragLeave(e){e.currentTarget.classList.remove('drag-over');}
+function dragEnd(e){e.currentTarget.classList.remove('dragging');document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));}
+/* touch drag */
+let _tEl=null,_tSid=null,_tTid=null;
+function initTouchDrag(){document.querySelectorAll('.tasks-table tbody tr[data-sid]').forEach(r=>{r.removeEventListener('touchstart',_tS);r.addEventListener('touchstart',_tS,{passive:false});});}
+function _tS(e){if(e.touches.length!==1)return;const r=this;r._tt=setTimeout(()=>{_tEl=r;_tSid=parseInt(r.dataset.sid);_tTid=parseInt(r.dataset.tid);r.classList.add('dragging');navigator.vibrate&&navigator.vibrate(40);document.addEventListener('touchmove',_tM,{passive:false});document.addEventListener('touchend',_tE,{once:true,passive:false});},450);r.addEventListener('touchend',()=>clearTimeout(r._tt),{once:true});r.addEventListener('touchmove',()=>clearTimeout(r._tt),{once:true});}
+function _tM(e){if(!_tEl)return;e.preventDefault();const t=e.touches[0];document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));const el=document.elementFromPoint(t.clientX,t.clientY);const tr=el?.closest('tr[data-tid]');if(tr&&tr!==_tEl)tr.classList.add('drag-over');}
+function _tE(e){if(!_tEl)return;const t=e.changedTouches[0];const el=document.elementFromPoint(t.clientX,t.clientY);const tgt=el?.closest('tr[data-tid]');document.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));_tEl.classList.remove('dragging');if(tgt&&tgt!==_tEl){const sid=parseInt(tgt.dataset.sid),tid=parseInt(tgt.dataset.tid);if(sid===_tSid&&tid!==_tTid){const p=getProject(),s=p.sections.find(s=>s.id===sid);if(s){const fi=s.tasks.findIndex(t=>t.id===_tTid),ti=s.tasks.findIndex(t=>t.id===tid);if(fi>=0&&ti>=0){const[m]=s.tasks.splice(fi,1);s.tasks.splice(ti,0,m);cloudSave();renderContent();}}}}_tEl=null;_tSid=null;_tTid=null;document.removeEventListener('touchmove',_tM);}
+function dragDrop(e,targetSid,targetTid){
+  e.preventDefault();document.querySelectorAll('.drag-over').forEach(el=>el.classList.remove('drag-over'));
+  if(_dragSid!==targetSid||_dragTid===targetTid)return;
+  const s=getProject().sections.find(s=>s.id===_dragSid);if(!s)return;
+  const fi=s.tasks.findIndex(t=>t.id===_dragTid);const ti=s.tasks.findIndex(t=>t.id===targetTid);
+  if(fi<0||ti<0)return;const[moved]=s.tasks.splice(fi,1);s.tasks.splice(ti,0,moved);
+  cloudSave();renderContent();
+}
+
+/* ═══════════════════════════════════
+   MODAL SYSTEM
+═══════════════════════════════════ */
+function g(id){const el=document.getElementById(id);return el?el.value:'';}
+function showModal(html){document.getElementById('modal-root').innerHTML=`<div class="modal-overlay" id="overlay" onclick="overlayClick(event)">${html}</div>`;}
+function closeModal(){document.getElementById('modal-root').innerHTML='';}
+function overlayClick(e){if(e.target.id==='overlay')closeModal();}
+
+function colorSwatchesHtml(sel){
+  return`<div class="color-picker">${COLORS_10.map(c=>`<div class="color-swatch ${c.hex===sel?'selected':''}" style="background:${c.hex}" onclick="selectColor('${c.hex}',this)"></div>`).join('')}</div>
+  <input type="hidden" id="m-color" value="${sel||COLORS_10[0].hex}">`;
+}
+function selectColor(hex,el){document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('selected'));el.classList.add('selected');document.getElementById('m-color').value=hex;}
+
+function riskPickerHtml(sel){
+  sel=sel||'med';
+  return`<div class="risk-picker">
+    ${RISK_LEVELS.map(r=>`<div class="risk-opt ${sel===r.key?'sel-'+r.key:''}" onclick="selectRisk('${r.key}',this)">${r.label}</div>`).join('')}
+  </div><input type="hidden" id="m-risk" value="${sel}">`;
+}
+function selectRisk(key,el){
+  document.querySelectorAll('.risk-opt').forEach(o=>o.className='risk-opt');
+  el.classList.add('sel-'+key);document.getElementById('m-risk').value=key;
+}
+
+function teamOptions(sel){return team.map(m=>`<option value="${m.name}" ${m.name===sel?'selected':''}>${m.name}（${m.loc}）</option>`).join('');}
+
+function tagMultiHtml(selected){
+  const allSel=selected.includes('all');
+  let html=`<div class="tag-multi" id="tag-multi">
+    <div class="tag-opt ${allSel?'selected':''}" onclick="toggleTag('all',this)" data-val="all">@ 全部成員</div>`;
+  team.forEach(m=>{html+=`<div class="tag-opt ${selected.includes(m.name)?'selected':''}" onclick="toggleTag('${m.name}',this)" data-val="${m.name}">${m.name}</div>`;});
+  html+='</div>';return html;
+}
+function toggleTag(val,el){
+  el.classList.toggle('selected');
+  if(val==='all'&&el.classList.contains('selected')){document.querySelectorAll('#tag-multi .tag-opt:not([data-val="all"])').forEach(o=>o.classList.remove('selected'));}
+  if(val!=='all'&&el.classList.contains('selected')){const allEl=document.querySelector('#tag-multi [data-val="all"]');if(allEl)allEl.classList.remove('selected');}
+}
+function getTaggedTo(){
+  const sel=[...document.querySelectorAll('#tag-multi .tag-opt.selected')].map(o=>o.dataset.val);
+  return sel.length?sel:['all'];
+}
+
+function openModal(type,sid,tid){
+  modalState={type,sid,tid};
+  const p=getProject();
+
+  /* ── Project modals ── */
+  if(type==='newProject'){
+    showModal(`<div class="modal"><div class="modal-title">➕ 新增審計項目</div>
+      <div class="form-row"><label class="form-label">項目名稱</label><input class="form-input" id="m-name" placeholder="如：薪酬審計"></div>
+      <div class="form-row"><label class="form-label">審計類型</label><input class="form-input" id="m-type" placeholder="如：合規審計、財務審計"></div>
+      <div class="form-row-2">
+        <div><label class="form-label">開始日期</label><input class="form-input" id="m-start" type="date"></div>
+        <div><label class="form-label">結束日期</label><input class="form-input" id="m-end" type="date"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitNewProject()">新增項目</button>
+      </div></div>`);
+
+  } else if(type==='editProject'){
+    showModal(`<div class="modal"><div class="modal-title">✏️ 編輯審計項目</div>
+      <div class="form-row"><label class="form-label">項目名稱</label><input class="form-input" id="m-name" value="${p.name}"></div>
+      <div class="form-row"><label class="form-label">審計類型</label><input class="form-input" id="m-type" value="${p.type}"></div>
+      <div class="form-row-2">
+        <div><label class="form-label">開始日期</label><input class="form-input" id="m-start" type="date" value="${p.start}"></div>
+        <div><label class="form-label">結束日期</label><input class="form-input" id="m-end" type="date" value="${p.end}"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="deleteProject()">🗑 刪除項目</button>
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitEditProject()">儲存</button>
+      </div></div>`);
+
+  /* ── Risk section modals ── */
+  } else if(type==='newRiskSection'){
+    showModal(`<div class="modal"><div class="modal-title">➕ 新增版塊</div>
+      <div class="form-row"><label class="form-label">版塊名稱</label><input class="form-input" id="m-name" placeholder="如：財務報表審查"></div>
+      <div class="form-row"><label class="form-label">版塊顏色</label>${colorSwatchesHtml(COLORS_10[0].hex)}</div>
+      <div class="form-row"><label class="form-label">風險水平</label>${riskPickerHtml('med')}</div>
+      <div class="form-row"><label class="form-label">風險摘要</label><textarea class="form-input form-textarea" id="m-summary" placeholder="描述此版塊的主要風險點…"></textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitNewSection()">新增版塊</button>
+      </div></div>`);
+
+  } else if(type==='editRiskSection'){
+    const s=p.sections.find(s=>s.id===sid);if(!s)return;
+    showModal(`<div class="modal"><div class="modal-title">✏️ 編輯版塊</div>
+      <div class="form-row"><label class="form-label">版塊名稱</label><input class="form-input" id="m-name" value="${s.name}"></div>
+      <div class="form-row"><label class="form-label">版塊顏色</label>${colorSwatchesHtml(s.color)}</div>
+      <div class="form-row"><label class="form-label">風險水平</label>${riskPickerHtml(s.riskLevel)}</div>
+      <div class="form-row"><label class="form-label">風險摘要</label><textarea class="form-input form-textarea" id="m-summary">${s.summary||''}</textarea></div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="deleteSection(${sid})">🗑 刪除版塊</button>
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitEditSection(${sid})">儲存</button>
+      </div></div>`);
+
+  /* ── Task modals ── */
+  } else if(type==='newTask'){
+    showModal(`<div class="modal"><div class="modal-title">➕ 新增任務</div>
+      <div class="form-row"><label class="form-label">任務名稱</label><input class="form-input" id="m-name" placeholder="如：合同條款審查"></div>
+      <div class="form-row"><label class="form-label">負責人</label><select class="form-input" id="m-assignee">${teamOptions('')}</select></div>
+      <div class="form-row-2">
+        <div><label class="form-label">開始日期</label><input class="form-input" id="m-start" type="date"></div>
+        <div><label class="form-label">截止日期</label><input class="form-input" id="m-end" type="date"></div>
+      </div>
+      <div class="form-row"><label class="form-label">備注（可選）</label><input class="form-input" id="m-notes"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitNewTask()">新增任務</button>
+      </div></div>`);
+
+  } else if(type==='editTask'){
+    const s=p.sections.find(s=>s.id===sid);const t=s&&s.tasks.find(t=>t.id===tid);if(!t)return;
+    const sOpts=STATUSES.map(st=>`<option value="${st.key}" ${st.key===t.status?'selected':''}>${st.label}</option>`).join('');
+    showModal(`<div class="modal"><div class="modal-title">✏️ 編輯任務</div>
+      <div class="form-row"><label class="form-label">任務名稱</label><input class="form-input" id="m-name" value="${t.name}"></div>
+      <div class="form-row"><label class="form-label">負責人</label><select class="form-input" id="m-assignee">${teamOptions(t.assignee)}</select></div>
+      <div class="form-row-2">
+        <div><label class="form-label">開始日期</label><input class="form-input" id="m-start" type="date" value="${t.start}"></div>
+        <div><label class="form-label">截止日期</label><input class="form-input" id="m-end" type="date" value="${t.end}"></div>
+      </div>
+      <div class="form-row-2">
+        <div><label class="form-label">狀態</label><select class="form-input" id="m-status">${sOpts}</select></div>
+        <div><label class="form-label">進度 %</label><input class="form-input" id="m-progress" type="number" min="0" max="100" step="10" value="${t.progress}"></div>
+      </div>
+      <div class="form-row"><label class="form-label">備注</label><input class="form-input" id="m-notes" value="${t.notes||''}"></div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="deleteTask(${sid},${tid})">🗑 刪除任務</button>
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitEditTask()">儲存</button>
+      </div></div>`);
+
+  /* ── Task comments ── */
+  } else if(type==='taskComments'){
+    let task=null;p.sections.forEach(s=>s.tasks.forEach(t=>{if(t.id===tid)task=t;}));if(!task)return;
+    showModal(`<div class="modal modal-wide"><div class="modal-title">💬 任務留言 — ${escHtml(task.name)}</div>
+      ${renderCommentThread(task.comments||[],'task',tid)}
+      <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">關閉</button></div>
+    </div>`);
+
+  /* ── Links modal ── */
+  } else if(type==='editLinks'){
+    const s=p.sections.find(s=>s.id===sid);const t=s&&s.tasks.find(t=>t.id===tid);if(!t)return;
+    const linksHtml=(t.links||[]).map((l,i)=>`<div style="display:flex;gap:6px;margin-bottom:6px">
+      <input class="form-input" style="flex:1" value="${escHtml(l.label)}" id="ll-${i}" placeholder="名稱">
+      <input class="form-input" style="flex:2" value="${escHtml(l.url)}" id="lu-${i}" placeholder="https://…">
+      <button class="btn btn-danger btn-sm" style="margin-right:0;padding:5px 8px" onclick="removeLink(${sid},${tid},${i})">✕</button>
+    </div>`).join('');
+    showModal(`<div class="modal modal-wide"><div class="modal-title">🔗 管理附件連結 — ${escHtml(t.name)}</div>
+      <div id="links-list">${linksHtml||'<div style="color:#b4b2a9;font-size:13px;padding:8px 0">尚無附件連結</div>'}</div>
+      <button class="btn btn-secondary" style="width:100%;margin-top:10px" onclick="addLinkRow(${sid},${tid})">＋ 新增連結</button>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveLinks(${sid},${tid})">儲存</button>
+      </div></div>`);
+
+  /* ── Findings modals ── */
+  } else if(type==='newFinding'){
+    const secOpts=p.sections.map(s=>`<option value="${s.name}">${s.name}</option>`).join('')+'<option value="其他">其他</option>';
+    const aOpts=`<option value="">— 選擇 —</option>`+team.map(m=>`<option value="${m.name}">${m.name}</option>`).join('');
+    showModal(`<div class="modal modal-wide"><div class="modal-title">➕ 新增審計發現</div>
+      <div class="form-row"><label class="form-label">所屬版塊</label><select class="form-input" id="m-sec">${secOpts}</select></div>
+      <div class="form-row"><label class="form-label">風險水平</label>${riskPickerHtml('med')}</div>
+      <div class="form-row"><label class="form-label">發現描述</label><textarea class="form-input form-textarea" id="m-desc" placeholder="描述審計發現的具體問題…"></textarea></div>
+      <div class="form-row"><label class="form-label">審計建議</label><textarea class="form-input form-textarea" id="m-rec" placeholder="建議的改善措施…"></textarea></div>
+      <div class="form-row"><label class="form-label">管理層回覆（可選）</label><textarea class="form-input" id="m-reply" style="min-height:60px" placeholder="管理層的回應…"></textarea></div>
+      <div class="form-row-2">
+        <div><label class="form-label">責任人</label><select class="form-input" id="m-assignee">${aOpts}</select></div>
+        <div><label class="form-label">整改期限</label><input class="form-input" id="m-deadline" type="date"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitNewFinding()">新增發現</button>
+      </div></div>`);
+
+  } else if(type==='editFinding'){
+    const f=p.findings.find(f=>f.id===sid);if(!f)return;
+    const secOpts=p.sections.map(s=>`<option value="${s.name}" ${s.name===f.sectionName?'selected':''}>${s.name}</option>`).join('')+`<option value="其他" ${f.sectionName==='其他'?'selected':''}>其他</option>`;
+    const aOpts=`<option value="">— 選擇 —</option>`+team.map(m=>`<option value="${m.name}" ${m.name===f.assignee?'selected':''}>${m.name}</option>`).join('');
+    const fsOpts=FOLLOW_STATUSES.map(fs=>`<option value="${fs.key}" ${fs.key===f.followStatus?'selected':''}>${fs.label}</option>`).join('');
+    showModal(`<div class="modal modal-wide"><div class="modal-title">✏️ 編輯審計發現</div>
+      <div class="form-row"><label class="form-label">所屬版塊</label><select class="form-input" id="m-sec">${secOpts}</select></div>
+      <div class="form-row"><label class="form-label">風險水平</label>${riskPickerHtml(f.riskLevel)}</div>
+      <div class="form-row"><label class="form-label">發現描述</label><textarea class="form-input form-textarea" id="m-desc">${f.description||''}</textarea></div>
+      <div class="form-row"><label class="form-label">審計建議</label><textarea class="form-input form-textarea" id="m-rec">${f.recommendation||''}</textarea></div>
+      <div class="form-row"><label class="form-label">管理層回覆</label><textarea class="form-input" id="m-reply" style="min-height:60px">${f.mgmtReply||''}</textarea></div>
+      <div class="form-row-2">
+        <div><label class="form-label">責任人</label><select class="form-input" id="m-assignee">${aOpts}</select></div>
+        <div><label class="form-label">整改期限</label><input class="form-input" id="m-deadline" type="date" value="${f.deadline||''}"></div>
+      </div>
+      <div class="form-row"><label class="form-label">跟進狀態</label><select class="form-input" id="m-followstatus">${fsOpts}</select></div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="deleteFinding(${f.id})">🗑 刪除</button>
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitEditFinding(${f.id})">儲存</button>
+      </div></div>`);
+
+  } else if(type==='findingComments'){
+    const f=p.findings.find(f=>f.id===sid);if(!f)return;
+    showModal(`<div class="modal modal-wide"><div class="modal-title">💬 跟進留言 — F-${String(p.findings.indexOf(f)+1).padStart(3,'0')}</div>
+      ${renderCommentThread(f.comments||[],'finding',f.id)}
+      <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">關閉</button></div>
+    </div>`);
+
+  /* ── Assignment modals ── */
+  } else if(type==='newAssignment'){
+    const cur2=currentUser();
+    const creatorOpts=team.map(m=>`<option value="${m.name}" ${m.name===cur2?'selected':''}>${m.name}</option>`).join('');
+    showModal(`<div class="modal modal-wide"><div class="modal-title">➕ 新增指派任務</div>
+      <div class="form-row"><label class="form-label">任務標題</label><input class="form-input" id="m-name" placeholder="如：請確認物料採購流程是否已更新"></div>
+      <div class="form-row"><label class="form-label">指派對象（可多選）</label>${tagMultiHtml([])}</div>
+      <div class="form-row"><label class="form-label">由誰創建</label><select class="form-input" id="m-creator">${creatorOpts}</select></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitNewAssignment()">新增</button>
+      </div></div>`);
+
+  } else if(type==='editAssignment'){
+    const a=p.assignments.find(a=>a.id===sid);if(!a)return;
+    showModal(`<div class="modal modal-wide"><div class="modal-title">✏️ 編輯指派任務</div>
+      <div class="form-row"><label class="form-label">任務標題</label><input class="form-input" id="m-name" value="${a.title}"></div>
+      <div class="form-row"><label class="form-label">指派對象</label>${tagMultiHtml(a.taggedTo||[])}</div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" onclick="deleteAssignment(${a.id})">🗑 刪除</button>
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitEditAssignment(${a.id})">儲存</button>
+      </div></div>`);
+
+  /* ── Team manager ── */
+  } else if(type==='teamManager'){
+    renderTeamModal();
+
+  /* ── Gitee setup ── */
+  } else if(type==='cloudSetup'){
+    const connected=cloudMode;
+    showModal(`<div class="modal modal-wide"><div class="modal-title">☁️ Gitee 雲端共享設定</div>
+      ${connected?`<div style="background:#EAF3DE;border:1px solid #c0ddba;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#3B6D11;display:flex;align-items:center;justify-content:space-between">
+        <span>✅ 已連接：<strong>${giteeOwner}/${giteeRepo}</strong></span>
+        <button onclick="disconnectCloud()" style="background:none;border:none;color:#A32D2D;cursor:pointer;font-size:12px;font-weight:700">✕ 斷開</button>
+      </div>`:`<div style="background:#FDF3E3;border:1px solid #f5c99a;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#854F0B">
+        ⚠️ 目前為本地模式。設定後所有同事打開同一文件即可共享最新數據。
+      </div>`}
+      <div class="setup-step"><div class="step-num">1</div><div class="step-body">
+        <div class="step-title">在 Gitee 建立帳號及新倉庫</div>
+        <div class="step-desc">前往 <a href="https://gitee.com" target="_blank">gitee.com</a> 免費註冊 → 建立私有倉庫（勾選初始化）</div>
+      </div></div>
+      <div class="setup-step"><div class="step-num">2</div><div class="step-body">
+        <div class="step-title">取得私人令牌</div>
+        <div class="step-desc">頭像 →「設置」→「私人令牌」→ 生成，勾選 <code>projects</code> 權限</div>
+      </div></div>
+      <div class="form-row-2">
+        <div><label class="form-label">Gitee 用戶名</label><input class="form-input" id="m-gowner" value="${giteeOwner}" placeholder="用戶名" style="font-family:monospace;font-size:12px"></div>
+        <div><label class="form-label">倉庫名</label><input class="form-input" id="m-grepo" value="${giteeRepo}" placeholder="倉庫名" style="font-family:monospace;font-size:12px"></div>
+      </div>
+      <div class="form-row"><label class="form-label">私人令牌</label>
+        <input class="form-input" id="m-gtoken" value="${giteeToken}" placeholder="貼上令牌…" style="font-family:monospace;font-size:12px">
+        <div class="form-hint">⚠️ 令牌只存在你自己的瀏覽器，不會傳至任何第三方</div>
+      </div>
+      ${connected?`<button class="btn btn-secondary btn-sm" onclick="runDiagnostics()" style="width:100%;margin-bottom:10px">🔍 診斷連接問題</button>
+        <pre id="diag-out" style="margin-bottom:10px;padding:10px;background:#f8f7f4;border-radius:8px;font-size:11px;font-family:monospace;white-space:pre-wrap;color:#5f5e5a;border:1px solid #eeece6;min-height:40px;max-height:160px;overflow-y:auto"></pre>`:''}
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">關閉</button>
+        <button class="btn btn-primary" onclick="connectGitee()">連接並同步</button>
+      </div></div>`);
+  }
+}
+
+/* ── Links helpers ── */
+function addLinkRow(sid,tid){
+  const list=document.getElementById('links-list');if(!list)return;
+  const i=list.querySelectorAll('.form-input').length/2;
+  const div=document.createElement('div');div.style.cssText='display:flex;gap:6px;margin-bottom:6px';
+  div.innerHTML=`<input class="form-input" style="flex:1" id="ll-${i}" placeholder="名稱">
+    <input class="form-input" style="flex:2" id="lu-${i}" placeholder="https://…">
+    <button class="btn btn-danger btn-sm" style="margin-right:0;padding:5px 8px" onclick="this.parentElement.remove()">✕</button>`;
+  list.appendChild(div);
+}
+function removeLink(sid,tid,idx){
+  const s=getProject().sections.find(s=>s.id===sid);const t=s&&s.tasks.find(t=>t.id===tid);if(!t)return;
+  t.links.splice(idx,1);cloudSave();openModal('editLinks',sid,tid);
+}
+function saveLinks(sid,tid){
+  const s=getProject().sections.find(s=>s.id===sid);const t=s&&s.tasks.find(t=>t.id===tid);if(!t)return;
+  const links=[];let i=0;
+  while(true){const li=document.getElementById('ll-'+i);const lu=document.getElementById('lu-'+i);if(!li||!lu)break;if(lu.value.trim())links.push({id:genId(),label:li.value.trim()||lu.value.trim(),url:lu.value.trim()});i++;}
+  t.links=links;cloudSave();closeModal();renderContent();
+}
+
+/* ── Submit handlers ── */
+function submitNewProject(){const name=g('m-name').trim();if(!name)return;projects.push({id:genId(),name,type:g('m-type')||'審計',start:g('m-start')||'2025-01-01',end:g('m-end')||'2025-12-31',sections:[],findings:[],assignments:[]});currentProject=projects.length-1;cloudSave();closeModal();renderContent();}
+function submitEditProject(){const p=getProject();if(!p)return;p.name=g('m-name')||p.name;p.type=g('m-type')||p.type;p.start=g('m-start')||p.start;p.end=g('m-end')||p.end;cloudSave();closeModal();renderContent();}
+function deleteProject(){if(!confirm(`確認刪除「${getProject().name}」及其所有內容？`))return;projects.splice(currentProject,1);currentProject=Math.max(0,currentProject-1);cloudSave();closeModal();renderContent();}
+
+function submitNewSection(){const name=g('m-name').trim();if(!name)return;getProject().sections.push({id:genId(),name,color:g('m-color')||COLORS_10[0].hex,riskLevel:g('m-risk')||'med',summary:g('m-summary')||'',open:true,tasks:[]});cloudSave();closeModal();renderContent();}
+function submitEditSection(sid){const s=getProject().sections.find(s=>s.id===sid);if(!s)return;s.name=g('m-name')||s.name;s.color=g('m-color')||s.color;s.riskLevel=g('m-risk')||s.riskLevel;s.summary=g('m-summary');cloudSave();closeModal();renderContent();}
+function deleteSection(sid){if(!confirm('確認刪除此版塊及所有任務？'))return;getProject().sections=getProject().sections.filter(s=>s.id!==sid);cloudSave();closeModal();renderContent();}
+
+function submitNewTask(){const s=getProject().sections.find(s=>s.id===modalState.sid);if(!s)return;const name=g('m-name').trim();if(!name)return;s.tasks.push({id:genId(),name,assignee:g('m-assignee'),start:g('m-start')||'2025-01-01',end:g('m-end')||'2025-12-31',status:'todo',progress:0,notes:g('m-notes'),links:[],comments:[]});cloudSave();closeModal();renderContent();}
+function submitEditTask(){const s=getProject().sections.find(s=>s.id===modalState.sid);const t=s&&s.tasks.find(t=>t.id===modalState.tid);if(!t)return;t.name=g('m-name')||t.name;t.assignee=g('m-assignee')||t.assignee;t.start=g('m-start')||t.start;t.end=g('m-end')||t.end;t.status=g('m-status')||t.status;t.progress=parseInt(g('m-progress'))||0;t.notes=g('m-notes');cloudSave();closeModal();renderContent();}
+function deleteTask(sid,tid){if(!confirm('確認刪除此任務？'))return;const s=getProject().sections.find(s=>s.id===sid);if(!s)return;s.tasks=s.tasks.filter(t=>t.id!==tid);cloudSave();closeModal();renderContent();}
+
+function submitNewFinding(){const p=getProject();const desc=g('m-desc').trim();if(!desc)return;if(!p.findings)p.findings=[];p.findings.push({id:genId(),sectionName:g('m-sec'),riskLevel:g('m-risk')||'med',description:desc,recommendation:g('m-rec'),mgmtReply:g('m-reply'),assignee:g('m-assignee'),deadline:g('m-deadline'),followStatus:'pending',comments:[]});cloudSave();closeModal();renderContent();}
+function submitEditFinding(fid){const p=getProject();const f=p.findings.find(f=>f.id===fid);if(!f)return;f.sectionName=g('m-sec')||f.sectionName;f.riskLevel=g('m-risk')||f.riskLevel;f.description=g('m-desc')||f.description;f.recommendation=g('m-rec');f.mgmtReply=g('m-reply');f.assignee=g('m-assignee');f.deadline=g('m-deadline');f.followStatus=g('m-followstatus')||f.followStatus;cloudSave();closeModal();renderContent();}
+function deleteFinding(fid){if(!confirm('確認刪除此審計發現？'))return;const p=getProject();p.findings=p.findings.filter(f=>f.id!==fid);cloudSave();closeModal();renderContent();}
+
+function submitNewAssignment(){const p=getProject();const title=g('m-name').trim();if(!title)return;if(!p.assignments)p.assignments=[];const tagged=getTaggedTo();const creator=g('m-creator')||currentUser();p.assignments.push({id:genId(),title,taggedTo:tagged,messages:[],closed:false,createdBy:creator,createdTs:Date.now()});cloudSave();closeModal();renderContent();}
+function submitEditAssignment(aid){const p=getProject();const a=p.assignments.find(a=>a.id===aid);if(!a)return;a.title=g('m-name')||a.title;a.taggedTo=getTaggedTo();cloudSave();closeModal();renderContent();}
+function deleteAssignment(aid){if(!confirm('確認刪除此指派任務？'))return;const p=getProject();p.assignments=p.assignments.filter(a=>a.id!==aid);cloudSave();closeModal();renderContent();}
+
+/* ── Team manager ── */
+function renderTeamModal(){
+  const rows=team.map(m=>{const mc=LOC_COLORS[m.loc]||{bg:'#E8E6F0',tc:'#533AB7'};return`<div class="team-member-row">
+    <div class="member-avatar" style="background:${mc.bg};color:${mc.tc};font-size:${m.name.length>2?'9px':'11px'}">${memberInitials(m.name)}</div>
+    <div class="member-info">${m.name}<span class="member-loc">${m.loc}</span></div>
+    <button class="member-btn" onclick="editMember('${m.id}')">✏️</button>
+    <button class="member-btn" onclick="deleteMember('${m.id}')" style="color:#e4a0a0">✕</button>
+  </div>`;}).join('');
+  showModal(`<div class="modal" style="width:440px"><div class="modal-title">👥 管理審計成員</div>
+    <div class="team-grid">${rows||'<div style="padding:12px;color:#888780;font-size:13px">尚未添加成員</div>'}</div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid #f1efe8">
+      <div style="font-size:12px;font-weight:700;color:#5f5e5a;margin-bottom:10px">新增成員</div>
+      <div class="form-row-2" style="margin-bottom:10px">
+        <div><label class="form-label">姓名</label><input class="form-input" id="m-tname" placeholder="如：陳大文"></div>
+        <div><label class="form-label">所在地區</label><input class="form-input" id="m-tloc" placeholder="如：香港、河源、成都"></div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="addMember()">＋ 新增成員</button>
+    </div>
+    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">關閉</button></div>
+  </div>`);
+}
+function addMember(){const name=g('m-tname').trim();if(!name)return;team.push({id:'t'+genId(),name,loc:g('m-tloc').trim()||'香港'});cloudSave();renderTeamModal();}
+function deleteMember(id){if(!confirm('確認刪除？'))return;team=team.filter(m=>m.id!==id);cloudSave();renderTeamModal();}
+function editMember(id){const m=team.find(m=>m.id===id);if(!m)return;showModal(`<div class="modal">
+  <div class="modal-title">✏️ 編輯成員</div>
+  <div class="form-row"><label class="form-label">姓名</label><input class="form-input" id="m-ename" value="${m.name}"></div>
+  <div class="form-row"><label class="form-label">所在地區</label><input class="form-input" id="m-eloc" value="${m.loc}" placeholder="如：香港、河源、成都"></div>
+  <div class="modal-actions">
+    <button class="btn btn-secondary" onclick="openModal('teamManager')">返回</button>
+    <button class="btn btn-primary" onclick="saveMember('${id}')">儲存</button>
+  </div></div>`);}
+function saveMember(id){const m=team.find(m=>m.id===id);if(!m)return;m.name=g('m-ename')||m.name;m.loc=g('m-eloc').trim()||m.loc;cloudSave();renderTeamModal();}
+
+/* ── Gitee connect/disconnect ── */
+async function connectGitee(){
+  const token=g('m-gtoken').trim(),owner=g('m-gowner').trim(),repo=g('m-grepo').trim();
+  if(!token||!owner||!repo){alert('請填寫全部三個欄位');return;}
+  setSyncStatus('warn','驗證中…');
+  try{const r=await fetch('https://gitee.com/api/v5/user?access_token='+encodeURIComponent(token));if(!r.ok)throw new Error('令牌無效 ('+r.status+')');}
+  catch(e){setSyncStatus('err','連接失敗：'+e.message);alert('連接失敗：'+e.message);return;}
+  saveGiteeCreds(token,owner,repo);const ok=await cloudLoad();if(ok){closeModal();renderContent();}
+}
+function disconnectCloud(){if(!confirm('確認斷開 Gitee 連接？'))return;clearGiteeCreds();setSyncStatus('local','本地模式（僅自己可見）');openModal('cloudSetup');}
+
+/* ═══════════════════════════════════
+   EXCEL EXPORT
+═══════════════════════════════════ */
+function exportExcel(){
+  const wb=XLSX.utils.book_new();const p=getProject();if(!p){alert('請先選擇一個項目');return;}
+  const taskRows=[['項目','版塊','風險水平','任務','負責人','地區','開始日期','截止日期','工作天數','狀態','進度(%)','備注']];
+  p.sections.forEach(s=>{s.tasks.forEach(t=>{const m=team.find(x=>x.name===t.assignee);const r=riskObj(s.riskLevel);taskRows.push([p.name,s.name,r.label,t.name,t.assignee,m?m.loc:'',t.start,t.end,workdays(t.start,t.end),statusObj(t.status).label,t.progress,t.notes||'']);});});
+  const ws1=XLSX.utils.aoa_to_sheet(taskRows);ws1['!cols']=[{wch:14},{wch:14},{wch:8},{wch:24},{wch:10},{wch:8},{wch:12},{wch:12},{wch:10},{wch:8},{wch:8},{wch:24}];
+  XLSX.utils.book_append_sheet(wb,ws1,'任務追蹤');
+  const riskRows=[['版塊','風險水平','風險摘要','任務總數','已完成','進行中','待開始','完成率(%)']];
+  p.sections.forEach(s=>{const r=riskObj(s.riskLevel);const done=s.tasks.filter(t=>t.status==='done').length;const wip=s.tasks.filter(t=>t.status==='wip').length;const todo=s.tasks.filter(t=>t.status==='todo'||t.status==='review').length;const pct=s.tasks.length?Math.round(s.tasks.reduce((a,t)=>a+t.progress,0)/s.tasks.length):0;riskRows.push([s.name,r.label,s.summary||'',s.tasks.length,done,wip,todo,pct]);});
+  const ws2=XLSX.utils.aoa_to_sheet(riskRows);ws2['!cols']=[{wch:16},{wch:8},{wch:30},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws2,'風險評估');
+  if(p.findings&&p.findings.length){const fRows=[['編號','版塊','風險水平','發現描述','審計建議','管理層回覆','責任人','整改期限','跟進狀態']];p.findings.forEach((f,i)=>{const r=riskObj(f.riskLevel);const fo=followObj(f.followStatus);fRows.push([`F-${String(i+1).padStart(3,'0')}`,f.sectionName,r.label,f.description||'',f.recommendation||'',f.mgmtReply||'',f.assignee||'',f.deadline||'',fo.label]);});const ws3=XLSX.utils.aoa_to_sheet(fRows);ws3['!cols']=[{wch:8},{wch:14},{wch:8},{wch:30},{wch:28},{wch:24},{wch:10},{wch:12},{wch:10}];XLSX.utils.book_append_sheet(wb,ws3,'審計發現');}
+  const fname=`${p.name}_${new Date().toISOString().slice(0,10)}.xlsx`;XLSX.writeFile(wb,fname);
+}
+
+/* ═══════════════════════════════════
+   INIT
+═══════════════════════════════════ */
+async function init(){
+  loadLocal();
+  if(cloudMode){setSyncStatus('warn','連接雲端中…');const ok=await cloudLoad();if(!ok)setSyncStatus('err','載入失敗，顯示本地緩存');}
+  else setSyncStatus('local','本地模式（僅自己可見）');
+  renderContent();
+  renderIdentityPicker();
+}
+init();
+</script>
+</body>
+</html>
