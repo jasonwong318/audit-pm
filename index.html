@@ -286,6 +286,31 @@ textarea.form-input{font-size:16px!important;min-height:80px}
 .update-section-label{font-size:10px;font-weight:700;color:#b4b2a9;letter-spacing:.5px;text-transform:uppercase}
 .update-section-text{font-size:13px;color:#1a1a1a;line-height:1.6;white-space:pre-wrap;background:#fafaf8;padding:8px 10px;border-radius:6px;border:1px solid #eeece6}
 @media(max-width:768px){.update-card-top{flex-wrap:wrap}.update-period-badge{order:-1}}
+/* ── Subtasks ── */
+.subtask-list{display:flex;flex-direction:column;gap:2px;padding:4px 0 4px 24px}
+.subtask-item{display:flex;align-items:center;gap:6px;font-size:12px;color:#5f5e5a;padding:2px 0;cursor:pointer}
+.subtask-item input[type=checkbox]{width:13px;height:13px;cursor:pointer;accent-color:#185FA5;flex-shrink:0}
+.subtask-item.done-st span{text-decoration:line-through;color:#b4b2a9}
+.subtask-count{font-size:10px;color:#888780;background:#f1efe8;padding:1px 6px;border-radius:10px;margin-left:5px;vertical-align:middle}
+/* ── Reactions ── */
+.reaction-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;align-items:center}
+.reaction-btn{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:20px;font-size:11px;border:1px solid #d3d1c7;background:#f8f7f4;cursor:pointer;transition:all .12s;line-height:1.4;font-family:inherit}
+.reaction-btn:hover{background:#f1efe8;border-color:#b4b2a9}
+.reaction-btn.reacted{background:#E6F1FB;border-color:#b5d4f4;font-weight:700}
+.reaction-btn.ghost{opacity:.25;border-style:dashed}
+.reaction-btn.ghost:hover{opacity:.85;background:#f1efe8}
+/* ── Workload view ── */
+.workload-card{background:#fff;border:1px solid #d3d1c7;border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.workload-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #f1efe8;flex-wrap:wrap}
+.workload-stats{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;flex:1}
+.workload-task-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #fafaf8;font-size:12px}
+.workload-task-row:last-child{border-bottom:none}
+/* ── Milestone badge ── */
+.milestone-badge{font-size:10px;font-weight:700;padding:1px 8px;border-radius:20px;background:#f1efe8;color:#5f5e5a;border:1px solid #d3d1c7;white-space:nowrap}
+/* ── AI button ── */
+.ai-btn{background:linear-gradient(135deg,#1a3a5c 0%,#533AB7 100%);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+.ai-btn:hover{opacity:.88;transform:translateY(-1px)}
+.ai-btn:disabled{opacity:.5;cursor:wait;transform:none}
 </style>
 </head>
 <body>
@@ -306,6 +331,7 @@ textarea.form-input{font-size:16px!important;min-height:80px}
     <button class="btn btn-secondary btn-sm" onclick="exportExcel()">📥 導出 Excel</button>
     <button class="btn btn-secondary btn-sm" onclick="openModal('teamManager')">👥 管理成員</button>
     <button class="btn btn-secondary btn-sm" onclick="openModal('cloudSetup')">☁️ Gitee 設定</button>
+    <button class="btn btn-secondary btn-sm" onclick="openModal('aiSettings')">🤖 AI</button>
     <button class="btn btn-primary btn-sm" onclick="openModal('newProject')">＋ 新增項目</button>
   </div>
 </div>
@@ -342,8 +368,8 @@ const LOC_COLORS={
   '香港':{bg:'#D6E8F7',tc:'#185FA5'},'河源':{bg:'#D4EDBA',tc:'#3B6D11'},
   '廣東':{bg:'#D4EDBA',tc:'#3B6D11'},'成都':{bg:'#EEEDFE',tc:'#533AB7'},
 };
-const VIEWS=['risk','task','gantt','findings','assignments','updates'];
-const VIEW_LABELS={'risk':'🔴 風險評估','task':'✅ 任務視圖','gantt':'📅 甘特圖','findings':'🔍 審計發現','assignments':'📌 指派任務','updates':'📋 週報'};
+const VIEWS=['risk','task','gantt','findings','assignments','updates','workload'];
+const VIEW_LABELS={'risk':'🔴 風險評估','task':'✅ 任務視圖','gantt':'📅 甘特圖','findings':'🔍 審計發現','assignments':'📌 指派任務','updates':'📋 週報','workload':'📊 工作量'};
 
 const DEFAULT_TEAM=[
   {id:'t1',name:'陳大文',loc:'香港'},{id:'t2',name:'李小明',loc:'香港'},
@@ -402,9 +428,11 @@ function migrate(p){
   p.sections.forEach(s=>{
     if(!s.riskLevel) s.riskLevel='med';
     if(s.summary===undefined) s.summary='';
+    if(!s.milestone) s.milestone='';
     s.tasks.forEach(t=>{
       if(!t.links) t.links=[];
       if(!t.comments) t.comments=[];
+      if(!t.subtasks) t.subtasks=[];
     });
   });
   return p;
@@ -623,8 +651,33 @@ function renderContent(){
   else if(currentView==='findings')html+=renderFindings(p);
   else if(currentView==='assignments')html+=renderAssignments(p);
   else if(currentView==='updates')html+=renderWeeklyUpdates(p);
+  else if(currentView==='workload')html+=renderWorkload(p);
   document.getElementById('content').innerHTML=html;
   if('ontouchstart' in window)setTimeout(initTouchDrag,80);
+}
+
+/* ═══════════════════════════════════
+   HELPERS — RISK & SUBTASKS
+═══════════════════════════════════ */
+function calcTaskRisk(t){
+  if(t.status==='done')return'none';
+  const now=new Date().setHours(0,0,0,0);
+  const s=new Date(t.start).setHours(0,0,0,0);
+  const e=new Date(t.end).setHours(0,0,0,0);
+  if(now>e)return'overdue';
+  if(now<=s)return'none';
+  const total=e-s;if(!total)return'none';
+  const gap=(now-s)/total*100-t.progress;
+  if(gap>30)return'high';
+  if(gap>15)return'med';
+  return'none';
+}
+function renderSubtaskList(sid,tid,subtasks){
+  if(!subtasks||!subtasks.length)return'';
+  return`<div class="subtask-list">${subtasks.map(st=>`<div class="subtask-item${st.done?' done-st':''}">
+    <input type="checkbox" ${st.done?'checked':''} onclick="toggleSubtask(${sid},${tid},${st.id})">
+    <span>${escHtml(st.text)}</span>
+  </div>`).join('')}</div>`;
 }
 
 /* ═══════════════════════════════════
@@ -694,6 +747,7 @@ function renderTaskViewMobile(p){
             <input type="range" min="0" max="100" step="10" value="${t.progress}" onchange="updateProgress(${s.id},${t.id},this.value)">
           </div>
           ${linksHtml?`<div class="task-card-m-links">${linksHtml}<button class="add-task-btn" onclick="openModal('editLinks',${s.id},${t.id})">＋🔗</button></div>`:''}
+          ${t.subtasks&&t.subtasks.length?renderSubtaskList(s.id,t.id,t.subtasks):''}
           ${t.notes?`<div style="font-size:11px;color:#b4b2a9;margin-bottom:5px">${escHtml(t.notes.slice(0,40))}${t.notes.length>40?'…':''}</div>`:''}
           <div class="task-card-m-actions">
             <button class="add-task-btn" onclick="openModal('taskComments',${s.id},${t.id})" style="color:${commentCount>0?'#185FA5':'#b4b2a9'}">
@@ -722,7 +776,8 @@ function renderTaskView(p){
     html+=`<div class="section-card">
       <div class="section-head" onclick="toggleSection(${s.id})">
         <div class="section-dot" style="background:${s.color}"></div>
-        <div class="section-title">${s.name}</div>
+        <div class="section-title">${escHtml(s.name)}</div>
+        ${s.milestone?`<span class="milestone-badge" style="margin-right:4px">${escHtml(s.milestone)}</span>`:''}
         <span class="${r.cls}" style="font-size:10px;padding:1px 7px;margin-right:4px">${r.label}</span>
         <div style="font-size:11px;color:#888780;margin-right:6px">${s.tasks.length} 個任務 | ${sectionPct(s)}%</div>
         <div class="chevron ${s.open?'open':''}">▶</div>
@@ -741,7 +796,7 @@ function renderTaskView(p){
         html+=`<tr draggable="true" data-sid="${s.id}" data-tid="${t.id}"
           ondragstart="dragStart(event,${s.id},${t.id})" ondragover="dragOver(event)"
           ondragleave="dragLeave(event)" ondrop="dragDrop(event,${s.id},${t.id})" ondragend="dragEnd(event)">
-          <td data-label="任務"><span class="drag-handle">⠿</span> <span style="font-weight:600">${t.name}</span></td>
+          <td data-label="任務" style="vertical-align:top"><span class="drag-handle">⠿</span> <span style="font-weight:600">${escHtml(t.name)}</span>${(()=>{const r=calcTaskRisk(t);const dot=r==='none'?'':r==='overdue'?`<span style="width:7px;height:7px;border-radius:50%;background:#A32D2D;display:inline-block;vertical-align:middle;margin-left:4px;animation:pulse 1.2s infinite" title="已逾期"></span>`:r==='high'?`<span style="width:7px;height:7px;border-radius:50%;background:#A32D2D;display:inline-block;vertical-align:middle;margin-left:4px" title="進度嚴重落後"></span>`:`<span style="width:7px;height:7px;border-radius:50%;background:#BA7517;display:inline-block;vertical-align:middle;margin-left:4px" title="進度略落後"></span>`;return dot;})()}${t.subtasks&&t.subtasks.length?`<span class="subtask-count">${t.subtasks.filter(x=>x.done).length}/${t.subtasks.length}</span>`:''}${renderSubtaskList(s.id,t.id,t.subtasks||[])}</td>
           <td data-label="負責人"><span class="assignee-badge" style="background:${mc.bg};color:${mc.tc}">
             <span style="width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block;flex-shrink:0"></span>
             ${t.assignee}</span></td>
@@ -955,16 +1010,98 @@ function renderWeeklyUpdates(p){
   return html;
 }
 
+/* ═══════════════════════════════════
+   WORKLOAD VIEW
+═══════════════════════════════════ */
+function renderWorkload(p){
+  const today=new Date();today.setHours(0,0,0,0);
+  const memberTasks={};
+  team.forEach(m=>{memberTasks[m.name]=[];});
+  p.sections.forEach(s=>s.tasks.forEach(t=>{
+    if(!memberTasks[t.assignee])memberTasks[t.assignee]=[];
+    memberTasks[t.assignee].push({task:t,section:s,risk:calcTaskRisk(t)});
+  }));
+  const sorted=[...team].sort((a,b)=>(memberTasks[b.name]||[]).length-(memberTasks[a.name]||[]).length);
+  let html='<div>';
+  sorted.forEach(m=>{
+    const items=memberTasks[m.name]||[];
+    const done=items.filter(x=>x.task.status==='done').length;
+    const wip=items.filter(x=>x.task.status==='wip').length;
+    const overdue=items.filter(x=>x.risk==='overdue').length;
+    const highRisk=items.filter(x=>x.risk==='high').length;
+    const mc=memberColor(m.name);
+    const avgProg=items.length?Math.round(items.reduce((a,x)=>a+x.task.progress,0)/items.length):0;
+    html+=`<div class="workload-card">
+      <div class="workload-header">
+        <div class="member-avatar" style="background:${mc.bg};color:${mc.tc};width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${memberInitials(m.name)}</div>
+        <div style="min-width:80px"><div style="font-size:14px;font-weight:700;color:#1a1a1a">${escHtml(m.name)}</div><div style="font-size:11px;color:#888780">${escHtml(m.loc)}</div></div>
+        <div class="workload-stats">
+          <span style="color:#888780">📋 ${items.length} 任務</span>
+          <span style="color:#3B6D11">✓ ${done} 完成</span>
+          <span style="color:#185FA5">⟳ ${wip} 進行中</span>
+          ${overdue?`<span style="color:#A32D2D;font-weight:700">⚠️ ${overdue} 逾期</span>`:''}
+          ${highRisk?`<span style="color:#854F0B">🔴 ${highRisk} 落後</span>`:''}
+        </div>
+      </div>`;
+    if(items.length){
+      html+=`<div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#888780;margin-bottom:3px"><span>平均進度</span><span>${avgProg}%</span></div>
+        <div style="height:5px;background:#e8e6df;border-radius:3px;overflow:hidden"><div style="width:${avgProg}%;height:100%;background:${mc.tc||'#185FA5'};border-radius:3px;transition:width .3s"></div></div>
+      </div>`;
+      html+=items.map(x=>{
+        const t=x.task,s=x.section,st=statusObj(t.status);
+        const end=new Date(t.end);end.setHours(0,0,0,0);
+        const daysLeft=Math.ceil((end-today)/86400000);
+        const daysLabel=t.status==='done'?'已完成':daysLeft<0?`逾期 ${Math.abs(daysLeft)}天`:daysLeft===0?'今天截止':`${daysLeft}天後截止`;
+        const daysColor=t.status==='done'?'#3B6D11':daysLeft<0?'#A32D2D':daysLeft<=3?'#854F0B':'#888780';
+        const riskIcon=x.risk==='overdue'?'⚠️ ':x.risk==='high'?'🔴 ':x.risk==='med'?'🟡 ':'';
+        const nameColor=x.risk==='overdue'||x.risk==='high'?'#A32D2D':x.risk==='med'?'#854F0B':'#1a1a1a';
+        return`<div class="workload-task-row">
+          <div style="width:9px;height:9px;border-radius:50%;background:${s.color};flex-shrink:0"></div>
+          <div style="flex:1;overflow:hidden">
+            <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${nameColor}">${riskIcon}${escHtml(t.name)}</div>
+            <div style="font-size:11px;color:#888780">${escHtml(s.name)}</div>
+          </div>
+          <span class="status-badge ${st.cls}" style="cursor:default;flex-shrink:0">${st.label}</span>
+          <span style="font-size:11px;color:${daysColor};white-space:nowrap;flex-shrink:0">${daysLabel}</span>
+          <div style="display:flex;align-items:center;gap:3px;flex-shrink:0">
+            <div class="mini-prog"><div class="mini-prog-fill" style="width:${t.progress}%;background:${s.color}"></div></div>
+            <span style="font-size:11px;color:#888780">${t.progress}%</span>
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      html+=`<div style="padding:10px 0;font-size:12px;color:#b4b2a9;text-align:center">暫無分配任務</div>`;
+    }
+    html+='</div>';
+  });
+  if(!team.length)html+='<div style="padding:32px;text-align:center;color:#888780;background:#fff;border-radius:12px;border:1px solid #d3d1c7">請先在「管理成員」中新增團隊成員</div>';
+  html+='</div>';
+  return html;
+}
+
 function renderCommentThread(comments, type, parentId){
   let html='<div class="comment-thread">';
+  const REACT_EMOJIS=['👍','✅','❓','⚠️','🔄'];
+  const cur2=currentUser();
   comments.forEach(c=>{
     const mc=memberColor(c.author);
+    const reactions=c.reactions||{};
+    const reactionHtml=`<div class="reaction-row">
+      ${REACT_EMOJIS.map(e=>{
+        const users=reactions[e]||[];
+        if(!users.length)return`<button class="reaction-btn ghost" onclick="reactToComment('${type}',${parentId},${c.id},'${e}')" title="新增 ${e}">${e}</button>`;
+        const reacted=users.includes(cur2);
+        return`<button class="reaction-btn${reacted?' reacted':''}" onclick="reactToComment('${type}',${parentId},${c.id},'${e}')" title="${escHtml(users.join(', '))}">${e} ${users.length}</button>`;
+      }).join('')}
+    </div>`;
     html+=`<div class="comment-row">
       <div class="comment-avatar" style="background:${mc.bg};color:${mc.tc}">${memberInitials(c.author)}</div>
       <div class="comment-bubble">
         <span class="comment-author">${escHtml(c.author)}</span>
         <span class="comment-ts">${fmtTs(c.ts)}</span>
         <div class="comment-text">${escHtml(c.text)}</div>
+        ${reactionHtml}
       </div>
     </div>`;
   });
@@ -982,6 +1119,22 @@ function renderCommentThread(comments, type, parentId){
     </div>
   </div></div>`;
   return html;
+}
+
+function reactToComment(type,parentId,commentId,emoji){
+  const user=currentUser();const p=getProject();let comment=null;
+  if(type==='assignment'){const a=p.assignments.find(a=>a.id===parentId);if(a)comment=(a.messages||[]).find(c=>c.id===commentId);}
+  else if(type==='finding'){const f=p.findings.find(f=>f.id===parentId);if(f)comment=(f.comments||[]).find(c=>c.id===commentId);}
+  else if(type==='task'){p.sections.forEach(s=>s.tasks.forEach(t=>{if(t.id===parentId)(t.comments||[]).forEach(c=>{if(c.id===commentId)comment=c;});}));}
+  if(!comment)return;
+  if(!comment.reactions)comment.reactions={};
+  if(!comment.reactions[emoji])comment.reactions[emoji]=[];
+  const idx=comment.reactions[emoji].indexOf(user);
+  if(idx>=0)comment.reactions[emoji].splice(idx,1);else comment.reactions[emoji].push(user);
+  cloudSave();
+  if(type==='task')openModal('taskComments',modalState&&modalState.sid,parentId);
+  else if(type==='finding')openModal('findingComments',parentId);
+  else renderContent();
 }
 
 /* ═══════════════════════════════════
@@ -1153,6 +1306,13 @@ function openModal(type,sid,tid){
       <div class="form-row"><label class="form-label">版塊名稱</label><input class="form-input" id="m-name" value="${s.name}"></div>
       <div class="form-row"><label class="form-label">版塊顏色</label>${colorSwatchesHtml(s.color)}</div>
       <div class="form-row"><label class="form-label">風險水平</label>${riskPickerHtml(s.riskLevel)}</div>
+      <div class="form-row"><label class="form-label">審計階段（可選）</label><select class="form-input" id="m-milestone">
+        <option value="" ${!s.milestone?'selected':''}>（無）</option>
+        <option value="籌備" ${s.milestone==='籌備'?'selected':''}>籌備</option>
+        <option value="現場測試" ${s.milestone==='現場測試'?'selected':''}>現場測試</option>
+        <option value="報告撰寫" ${s.milestone==='報告撰寫'?'selected':''}>報告撰寫</option>
+        <option value="跟進" ${s.milestone==='跟進'?'selected':''}>跟進</option>
+      </select></div>
       <div class="form-row"><label class="form-label">風險摘要</label><textarea class="form-input form-textarea" id="m-summary">${s.summary||''}</textarea></div>
       <div class="modal-actions">
         <button class="btn btn-danger" onclick="deleteSection(${sid})">🗑 刪除版塊</button>
@@ -1190,6 +1350,18 @@ function openModal(type,sid,tid){
         <div><label class="form-label">進度 %</label><input class="form-input" id="m-progress" type="number" min="0" max="100" step="10" value="${t.progress}"></div>
       </div>
       <div class="form-row"><label class="form-label">備注</label><input class="form-input" id="m-notes" value="${t.notes||''}"></div>
+      <div class="form-row"><label class="form-label">子任務清單</label>
+        <div id="subtask-list">${(t.subtasks||[]).length?
+          (t.subtasks||[]).map((st,i)=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+            <input type="hidden" id="st-id-${i}" value="${st.id}">
+            <input type="checkbox" id="st-done-${i}" ${st.done?'checked':''}>
+            <input class="form-input" style="flex:1;padding:5px 8px;font-size:13px" id="st-text-${i}" value="${escHtml(st.text)}">
+            <button class="btn btn-danger btn-sm" style="margin-right:0;padding:5px 8px;flex-shrink:0" onclick="this.parentElement.remove()">✕</button>
+          </div>`).join('')
+          :'<div id="st-empty" style="color:#b4b2a9;font-size:12px;padding:4px 0">尚無子任務</div>'}
+        </div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%" onclick="addSubtaskRow()">＋ 新增子任務</button>
+      </div>
       <div class="modal-actions">
         <button class="btn btn-danger" onclick="deleteTask(${sid},${tid})">🗑 刪除任務</button>
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
@@ -1343,6 +1515,10 @@ function openModal(type,sid,tid){
         <div><label class="form-label">日期</label><input class="form-input" id="m-date" type="date" value="${today}"></div>
       </div>
       <div class="form-row"><label class="form-label">更新人員</label><select class="form-input" id="m-author">${authorOpts}</select></div>
+      <div style="margin-bottom:14px">
+        <button class="ai-btn" id="ai-gen-btn" onclick="generateWeeklyReport()">🤖 AI 生成草稿</button>
+        <div id="ai-gen-hint" style="font-size:11px;color:#888780;margin-top:6px"></div>
+      </div>
       <div class="form-row"><label class="form-label">本期摘要</label><textarea class="form-input form-textarea" id="m-summary" placeholder="本期整體審計進度概覽…"></textarea></div>
       <div class="form-row"><label class="form-label">已完成工作</label><textarea class="form-input form-textarea" id="m-completed" placeholder="• 已完成任務 A&#10;• 已完成任務 B"></textarea></div>
       <div class="form-row"><label class="form-label">進行中</label><textarea class="form-input" id="m-inprogress" style="min-height:60px" placeholder="• 正在進行的工作項目"></textarea></div>
@@ -1373,6 +1549,50 @@ function openModal(type,sid,tid){
         <button class="btn btn-danger" onclick="deleteWeeklyUpdate(${u.id})">🗑 刪除</button>
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
         <button class="btn btn-primary" onclick="submitEditWeeklyUpdate(${u.id})">儲存</button>
+      </div></div>`);
+  /* ── AI Settings modal ── */
+  } else if(type==='aiSettings'){
+    const aiProv=localStorage.getItem('auditPM_aiProvider')||'';
+    const geminiKey=localStorage.getItem('auditPM_geminiKey')||'';
+    const geminiModel=localStorage.getItem('auditPM_geminiModel')||'gemini-2.0-flash';
+    const zhipuKey=localStorage.getItem('auditPM_zhipuKey')||'';
+    const zhipuModel=localStorage.getItem('auditPM_zhipuModel')||'glm-4-flash';
+    const provOpts=[{v:'',l:'— 未設定 —'},{v:'gemini',l:'Google Gemini'},{v:'zhipu',l:'智譜 Zhipu AI'}].map(o=>`<option value="${o.v}" ${o.v===aiProv?'selected':''}>${o.l}</option>`).join('');
+    showModal(`<div class="modal modal-wide"><div class="modal-title">🤖 AI 輔助設定</div>
+      <div style="background:#EAF3DE;border:1px solid #c0ddba;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#3B6D11">✅ API 密鑰僅保存在本機瀏覽器，不會傳送至任何第三方</div>
+      <div class="form-row"><label class="form-label">AI 服務商</label>
+        <select class="form-input" id="m-aiprovider" onchange="document.getElementById('ai-gemini').style.display=this.value==='gemini'?'block':'none';document.getElementById('ai-zhipu').style.display=this.value==='zhipu'?'block':'none'">${provOpts}</select>
+      </div>
+      <div id="ai-gemini" style="display:${aiProv==='gemini'?'block':'none'}">
+        <div class="form-row"><label class="form-label">Gemini API Key</label>
+          <input class="form-input" id="m-geminikey" value="${geminiKey}" placeholder="AIza…" style="font-family:monospace;font-size:12px">
+          <div class="form-hint">從 Google AI Studio (aistudio.google.com) 取得免費 API Key</div>
+        </div>
+        <div class="form-row"><label class="form-label">模型</label><select class="form-input" id="m-geminimodel">
+          <option value="gemini-2.0-flash" ${geminiModel==='gemini-2.0-flash'?'selected':''}>gemini-2.0-flash（推薦）</option>
+          <option value="gemini-2.5-flash-preview-05-20" ${geminiModel.includes('2.5')?'selected':''}>gemini-2.5-flash-preview</option>
+          <option value="gemini-1.5-flash" ${geminiModel==='gemini-1.5-flash'?'selected':''}>gemini-1.5-flash</option>
+        </select></div>
+      </div>
+      <div id="ai-zhipu" style="display:${aiProv==='zhipu'?'block':'none'}">
+        <div class="form-row"><label class="form-label">Zhipu API Key</label>
+          <input class="form-input" id="m-zhipukey" value="${zhipuKey}" placeholder="…" style="font-family:monospace;font-size:12px">
+          <div class="form-hint">從智譜開放平台 (open.bigmodel.cn) 取得，GLM-4-Flash 免費使用</div>
+        </div>
+        <div class="form-row"><label class="form-label">模型</label><select class="form-input" id="m-zhipumodel">
+          <option value="glm-4-flash" ${zhipuModel==='glm-4-flash'?'selected':''}>GLM-4-Flash（免費）</option>
+          <option value="glm-4-air" ${zhipuModel==='glm-4-air'?'selected':''}>GLM-4-Air</option>
+          <option value="glm-4" ${zhipuModel==='glm-4'?'selected':''}>GLM-4</option>
+        </select></div>
+      </div>
+      <div style="padding:12px;background:#fafaf8;border-radius:8px;border:1px solid #eeece6;font-size:12px;color:#5f5e5a;margin-top:8px">
+        <strong style="color:#1a3a5c">✨ 目前支援的 AI 功能</strong><br>
+        • 📋 週報：點擊「🤖 AI 生成草稿」自動分析任務進度並生成初稿<br>
+        • 📊 工作量：逾期風險評估（本地算法，無需 AI Key）
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveAISettings()">儲存設定</button>
       </div></div>`);
   }
 }
@@ -1412,12 +1632,22 @@ function archiveProject(){
   cloudSave();closeModal();renderContent();
 }
 
-function submitNewSection(){const name=g('m-name').trim();if(!name)return;getProject().sections.push({id:genId(),name,color:g('m-color')||COLORS_10[0].hex,riskLevel:g('m-risk')||'med',summary:g('m-summary')||'',open:true,tasks:[]});cloudSave();closeModal();renderContent();}
-function submitEditSection(sid){const s=getProject().sections.find(s=>s.id===sid);if(!s)return;s.name=g('m-name')||s.name;s.color=g('m-color')||s.color;s.riskLevel=g('m-risk')||s.riskLevel;s.summary=g('m-summary');cloudSave();closeModal();renderContent();}
+function submitNewSection(){const name=g('m-name').trim();if(!name)return;getProject().sections.push({id:genId(),name,color:g('m-color')||COLORS_10[0].hex,riskLevel:g('m-risk')||'med',summary:g('m-summary')||'',milestone:g('m-milestone')||'',open:true,tasks:[]});cloudSave();closeModal();renderContent();}
+function submitEditSection(sid){const s=getProject().sections.find(s=>s.id===sid);if(!s)return;s.name=g('m-name')||s.name;s.color=g('m-color')||s.color;s.riskLevel=g('m-risk')||s.riskLevel;s.summary=g('m-summary');s.milestone=g('m-milestone');cloudSave();closeModal();renderContent();}
 function deleteSection(sid){if(!confirm('確認刪除此版塊及所有任務？'))return;getProject().sections=getProject().sections.filter(s=>s.id!==sid);cloudSave();closeModal();renderContent();}
 
-function submitNewTask(){const s=getProject().sections.find(s=>s.id===modalState.sid);if(!s)return;const name=g('m-name').trim();if(!name)return;s.tasks.push({id:genId(),name,assignee:g('m-assignee'),start:g('m-start')||'2025-01-01',end:g('m-end')||'2025-12-31',status:'todo',progress:0,notes:g('m-notes'),links:[],comments:[]});cloudSave();closeModal();renderContent();}
-function submitEditTask(){const s=getProject().sections.find(s=>s.id===modalState.sid);const t=s&&s.tasks.find(t=>t.id===modalState.tid);if(!t)return;t.name=g('m-name')||t.name;t.assignee=g('m-assignee')||t.assignee;t.start=g('m-start')||t.start;t.end=g('m-end')||t.end;t.status=g('m-status')||t.status;t.progress=parseInt(g('m-progress'))||0;t.notes=g('m-notes');cloudSave();closeModal();renderContent();}
+function submitNewTask(){const s=getProject().sections.find(s=>s.id===modalState.sid);if(!s)return;const name=g('m-name').trim();if(!name)return;s.tasks.push({id:genId(),name,assignee:g('m-assignee'),start:g('m-start')||'2025-01-01',end:g('m-end')||'2025-12-31',status:'todo',progress:0,notes:g('m-notes'),links:[],comments:[],subtasks:[]});cloudSave();closeModal();renderContent();}
+function submitEditTask(){
+  const s=getProject().sections.find(s=>s.id===modalState.sid);const t=s&&s.tasks.find(t=>t.id===modalState.tid);if(!t)return;
+  t.name=g('m-name')||t.name;t.assignee=g('m-assignee')||t.assignee;t.start=g('m-start')||t.start;t.end=g('m-end')||t.end;t.status=g('m-status')||t.status;t.progress=parseInt(g('m-progress'))||0;t.notes=g('m-notes');
+  const newSts=[];document.querySelectorAll('#subtask-list [id^="st-text-"]').forEach(inp=>{
+    const text=inp.value.trim();if(!text)return;
+    const i=inp.id.replace('st-text-','');
+    const doneEl=document.getElementById('st-done-'+i);const idEl=document.getElementById('st-id-'+i);
+    newSts.push({id:idEl?parseInt(idEl.value):genId(),text,done:doneEl?doneEl.checked:false});
+  });
+  t.subtasks=newSts;cloudSave();closeModal();renderContent();
+}
 function deleteTask(sid,tid){if(!confirm('確認刪除此任務？'))return;const s=getProject().sections.find(s=>s.id===sid);if(!s)return;s.tasks=s.tasks.filter(t=>t.id!==tid);cloudSave();closeModal();renderContent();}
 
 function submitNewFinding(){const p=getProject();const desc=g('m-desc').trim();if(!desc)return;if(!p.findings)p.findings=[];p.findings.push({id:genId(),sectionName:g('m-sec'),riskLevel:g('m-risk')||'med',description:desc,recommendation:g('m-rec'),mgmtReply:g('m-reply'),assignee:g('m-assignee'),deadline:g('m-deadline'),followStatus:'pending',comments:[]});cloudSave();closeModal();renderContent();}
@@ -1489,6 +1719,104 @@ async function connectGitee(){
   saveGiteeCreds(token,owner,repo);const ok=await cloudLoad();if(ok){closeModal();renderContent();}
 }
 function disconnectCloud(){if(!confirm('確認斷開 Gitee 連接？'))return;clearGiteeCreds();setSyncStatus('local','本地模式（僅自己可見）');openModal('cloudSetup');}
+
+/* ═══════════════════════════════════
+   AI & SUBTASK HELPERS
+═══════════════════════════════════ */
+function addSubtaskRow(){
+  const list=document.getElementById('subtask-list');if(!list)return;
+  const empty=document.getElementById('st-empty');if(empty)empty.remove();
+  const i=list.querySelectorAll('[id^="st-text-"]').length;
+  const div=document.createElement('div');div.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:5px';
+  div.innerHTML=`<input type="hidden" id="st-id-${i}" value="${genId()}"><input type="checkbox" id="st-done-${i}"><input class="form-input" style="flex:1;padding:5px 8px;font-size:13px" id="st-text-${i}" placeholder="輸入子任務名稱…"><button class="btn btn-danger btn-sm" style="margin-right:0;padding:5px 8px;flex-shrink:0" onclick="this.parentElement.remove()">✕</button>`;
+  list.appendChild(div);document.getElementById('st-text-'+i)?.focus();
+}
+function toggleSubtask(sid,tid,stid){
+  const s=getProject().sections.find(s=>s.id===sid);const t=s&&s.tasks.find(t=>t.id===tid);
+  const st=t&&(t.subtasks||[]).find(s=>s.id===stid);if(!st)return;
+  st.done=!st.done;cloudSave();renderContent();
+}
+function saveAISettings(){
+  const prov=g('m-aiprovider');
+  localStorage.setItem('auditPM_aiProvider',prov);
+  if(prov==='gemini'){
+    const k=g('m-geminikey').trim();const m=g('m-geminimodel');
+    if(k)localStorage.setItem('auditPM_geminiKey',k);
+    if(m)localStorage.setItem('auditPM_geminiModel',m);
+  } else if(prov==='zhipu'){
+    const k=g('m-zhipukey').trim();const m=g('m-zhipumodel');
+    if(k)localStorage.setItem('auditPM_zhipuKey',k);
+    if(m)localStorage.setItem('auditPM_zhipuModel',m);
+  }
+  closeModal();
+  if(prov){const names={gemini:'Google Gemini',zhipu:'智譜 Zhipu AI'};alert('AI 設定已儲存 ✅\n服務商：'+(names[prov]||prov));}
+}
+async function callGemini(prompt,key,model){
+  const m=model||'gemini-2.0-flash';
+  const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(key)}`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.7,maxOutputTokens:1024}})
+  });
+  if(!res.ok){const t=await res.text();throw new Error('Gemini '+res.status+': '+t.slice(0,120));}
+  const j=await res.json();
+  const text=j.candidates?.[0]?.content?.parts?.[0]?.text;
+  if(!text)throw new Error('Gemini 無回應內容');
+  return text;
+}
+async function callZhipu(prompt,key,model){
+  const m=model||'glm-4-flash';
+  const res=await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions',{
+    method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+    body:JSON.stringify({model:m,messages:[{role:'user',content:prompt}],temperature:0.7,max_tokens:1024})
+  });
+  if(!res.ok){const t=await res.text();throw new Error('Zhipu '+res.status+': '+t.slice(0,120));}
+  const j=await res.json();
+  const text=j.choices?.[0]?.message?.content;
+  if(!text)throw new Error('Zhipu 無回應內容');
+  return text;
+}
+function buildWeeklyReportPrompt(p){
+  const today=new Date().toISOString().slice(0,10);
+  const done=doneTasks(p),total=totalTasks(p),prog=overallProgress(p);
+  let sectionInfo='';
+  p.sections.forEach(s=>{
+    const r=riskObj(s.riskLevel);
+    sectionInfo+='\n【'+s.name+'】'+r.label+' 完成率'+sectionPct(s)+'%';
+    s.tasks.forEach(t=>{
+      const st=statusObj(t.status);const rk=calcTaskRisk(t);
+      const rTag=rk==='overdue'?' ⚠️逾期':rk==='high'?' 🔴落後':rk==='med'?' 🟡滯後':'';
+      sectionInfo+='\n  • '+t.name+'（'+t.assignee+'）：'+st.label+' '+t.progress+'%'+rTag;
+    });
+  });
+  return '你是內部審計項目管理助手。請根據以下數據生成繁體中文週報草稿。\n\n項目：'+p.name+'（'+p.type+'）\n週期：'+p.start+' 至 '+p.end+'\n整體進度：'+prog+'%（'+done+'/'+total+' 任務完成）\n生成日期：'+today+'\n\n各版塊任務狀態：'+sectionInfo+'\n\n請生成週報，只返回以下JSON格式，不要其他文字：\n{"summary":"2-3句整體摘要","completed":"已完成工作（每項以•開頭，換行分隔）","inProgress":"進行中工作（每項以•開頭）","issues":"問題或阻礙（如無填空字串）","nextSteps":"下期計劃（每項以•開頭）"}';
+}
+async function generateWeeklyReport(){
+  const p=getProject();if(!p)return;
+  const provider=localStorage.getItem('auditPM_aiProvider')||'';
+  const geminiKey=localStorage.getItem('auditPM_geminiKey')||'';
+  const zhipuKey=localStorage.getItem('auditPM_zhipuKey')||'';
+  if(!provider||(provider==='gemini'&&!geminiKey)||(provider==='zhipu'&&!zhipuKey)){
+    alert('請先在「🤖 AI」中設定 AI 服務商及 API 密鑰');return;
+  }
+  const btn=document.getElementById('ai-gen-btn');const hint=document.getElementById('ai-gen-hint');
+  if(btn){btn.disabled=true;btn.textContent='⏳ 生成中…';}
+  if(hint)hint.textContent='AI 正在分析項目數據，請稍候…';
+  try{
+    const prompt=buildWeeklyReportPrompt(p);
+    let result;
+    if(provider==='gemini')result=await callGemini(prompt,geminiKey,localStorage.getItem('auditPM_geminiModel')||'gemini-2.0-flash');
+    else result=await callZhipu(prompt,zhipuKey,localStorage.getItem('auditPM_zhipuModel')||'glm-4-flash');
+    const match=result.match(/\{[\s\S]*\}/);if(!match)throw new Error('AI 回覆格式錯誤，請重試');
+    const data=JSON.parse(match[0]);
+    const fieldMap={summary:'m-summary',completed:'m-completed',inProgress:'m-inprogress',issues:'m-issues',nextSteps:'m-nextsteps'};
+    Object.entries(fieldMap).forEach(([k,id])=>{const el=document.getElementById(id);if(el&&data[k])el.value=data[k];});
+    if(hint)hint.textContent='✅ 草稿已生成，請審閱後儲存';
+  }catch(e){
+    if(hint)hint.textContent='❌ 生成失敗：'+e.message;
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🤖 AI 生成草稿';}
+  }
+}
 
 /* ═══════════════════════════════════
    EXCEL EXPORT
