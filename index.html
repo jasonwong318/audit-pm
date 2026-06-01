@@ -311,6 +311,23 @@ textarea.form-input{font-size:16px!important;min-height:80px}
 .ai-btn{background:linear-gradient(135deg,#1a3a5c 0%,#533AB7 100%);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
 .ai-btn:hover{opacity:.88;transform:translateY(-1px)}
 .ai-btn:disabled{opacity:.5;cursor:wait;transform:none}
+/* ── Admin mode ── */
+.admin-only{display:none!important}
+body.admin-mode .admin-only{display:inline-flex!important}
+.admin-btn-active{background:#EAF3DE!important;color:#3B6D11!important;border-color:#c0ddba!important;font-weight:700!important}
+/* ── Analysis modal ── */
+.analysis-body{font-size:13px;color:#1a1a1a;line-height:1.7;max-height:55vh;overflow-y:auto;padding:2px}
+.analysis-body h2{font-size:15px;font-weight:700;color:#1a3a5c;margin:16px 0 6px;padding-bottom:4px;border-bottom:1px solid #f1efe8}
+.analysis-body h3{font-size:13px;font-weight:700;color:#1a3a5c;margin:12px 0 4px}
+.analysis-body ul{padding-left:18px;margin:4px 0}
+.analysis-body li{margin-bottom:3px}
+.analysis-body p{margin-bottom:8px}
+.analysis-body strong{color:#1a1a1a}
+@media print{
+  .topbar,.proj-tabs,.view-nav,.sync-bar,.proj-header,.modal-actions{display:none!important}
+  .modal-overlay,.modal{position:static!important;background:transparent!important;box-shadow:none!important;padding:0!important;max-height:none!important}
+  body{background:#fff!important}
+}
 </style>
 </head>
 <body>
@@ -329,9 +346,10 @@ textarea.form-input{font-size:16px!important;min-height:80px}
   </div>
   <div class="topbar-right">
     <button class="btn btn-secondary btn-sm" onclick="exportExcel()">📥 導出 Excel</button>
-    <button class="btn btn-secondary btn-sm" onclick="openModal('teamManager')">👥 管理成員</button>
+    <button class="btn btn-secondary btn-sm admin-only" onclick="openModal('teamManager')">👥 管理成員</button>
     <button class="btn btn-secondary btn-sm" onclick="openModal('cloudSetup')">☁️ Gitee 設定</button>
-    <button class="btn btn-secondary btn-sm" onclick="openModal('aiSettings')">🤖 AI</button>
+    <button class="btn btn-secondary btn-sm admin-only" onclick="openModal('aiSettings')">🤖 AI 設定</button>
+    <button class="btn btn-secondary btn-sm" id="admin-toggle-btn" onclick="toggleAdminMode()">🔓 管理員</button>
     <button class="btn btn-primary btn-sm" onclick="openModal('newProject')">＋ 新增項目</button>
   </div>
 </div>
@@ -349,6 +367,7 @@ textarea.form-input{font-size:16px!important;min-height:80px}
 /* ═══════════════════════════════════
    CONSTANTS
 ═══════════════════════════════════ */
+const ADMIN_PASSWORD='admin2024'; // ← 管理員密碼，請在分發給同事前修改此行
 const COLORS_10=[
   {hex:'#185FA5'},{hex:'#3B6D11'},{hex:'#993556'},{hex:'#854F0B'},{hex:'#A32D2D'},
   {hex:'#533AB7'},{hex:'#0F6E56'},{hex:'#BA7517'},{hex:'#5F5E5A'},{hex:'#D85A30'},
@@ -415,6 +434,7 @@ const DEFAULT_PROJECTS=[
 ═══════════════════════════════════ */
 let projects=[], team=[], currentProject=0, currentView='risk', modalState=null, nextId=8000;
 let _showArchived=false;
+let _isAdmin=false;
 let giteeToken='', giteeOwner='', giteeRepo='', cloudMode=false;
 let giteeSha='';
 const GITEE_FILE='audit-data.json';
@@ -425,6 +445,7 @@ function migrate(p){
   if(!p.assignments) p.assignments=[];
   if(p.archived===undefined) p.archived=false;
   if(!p.weeklyUpdates) p.weeklyUpdates=[];
+  if(!p.members) p.members=[];
   p.sections.forEach(s=>{
     if(!s.riskLevel) s.riskLevel='med';
     if(s.summary===undefined) s.summary='';
@@ -618,6 +639,25 @@ function renderProjTabs(){
   document.getElementById('proj-tabs').innerHTML=tabsHtml+`<div class="add-proj-tab" onclick="openModal('newProject')">＋</div>`+archiveToggle;
 }
 function toggleArchivedProjects(){_showArchived=!_showArchived;renderProjTabs();}
+function isAdmin(){return _isAdmin;}
+function updateAdminUI(){
+  const btn=document.getElementById('admin-toggle-btn');
+  if(btn){
+    if(_isAdmin){btn.textContent='🔐 管理員';btn.classList.add('admin-btn-active');}
+    else{btn.textContent='🔓 管理員';btn.classList.remove('admin-btn-active');}
+  }
+  document.body.classList.toggle('admin-mode',_isAdmin);
+}
+function toggleAdminMode(){
+  if(_isAdmin){openModal('adminPanel');return;}
+  openModal('enterAdminPwd');
+}
+function submitEnterAdminPwd(){
+  const p=g('m-pwd').trim();
+  if(p===ADMIN_PASSWORD){_isAdmin=true;closeModal();updateAdminUI();renderContent();}
+  else alert('密碼錯誤');
+}
+function confirmExitAdmin(){if(!confirm('確認退出管理員模式？'))return;_isAdmin=false;closeModal();updateAdminUI();renderContent();}
 function renderViewNav(){
   document.getElementById('view-nav').innerHTML=
     VIEWS.map(v=>`<button class="vnav-btn ${v===currentView?'active':''}" onclick="setView('${v}')">${VIEW_LABELS[v]}</button>`).join('');
@@ -636,6 +676,7 @@ function renderContent(){
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
         <div class="proj-name">${p.name}</div>
         <button class="add-task-btn" style="font-size:12px" onclick="openModal('editProject')">✏️ 編輯項目</button>
+      ${isAdmin()?`<button class="add-task-btn" style="font-size:12px;color:#533AB7;font-weight:700" onclick="openModal('aiAnalysis')">🤖 AI 分析</button>`:''}
       </div>
       <div class="proj-dates">📅 ${fmtDate(p.start)} → ${fmtDate(p.end)} &nbsp;|&nbsp; 類型：${p.type} &nbsp;|&nbsp; ${doneTasks(p)}/${totalTasks(p)} 任務完成</div>
     </div>
@@ -1021,7 +1062,8 @@ function renderWorkload(p){
     if(!memberTasks[t.assignee])memberTasks[t.assignee]=[];
     memberTasks[t.assignee].push({task:t,section:s,risk:calcTaskRisk(t)});
   }));
-  const sorted=[...team].sort((a,b)=>(memberTasks[b.name]||[]).length-(memberTasks[a.name]||[]).length);
+  const projMembers=(p.members&&p.members.length>0)?p.members:team.map(m=>m.name);
+  const sorted=[...team].filter(m=>projMembers.includes(m.name)).sort((a,b)=>(memberTasks[b.name]||[]).length-(memberTasks[a.name]||[]).length);
   let html='<div>';
   sorted.forEach(m=>{
     const items=memberTasks[m.name]||[];
@@ -1237,6 +1279,24 @@ function selectRisk(key,el){
 
 function teamOptions(sel){return team.map(m=>`<option value="${m.name}" ${m.name===sel?'selected':''}>${m.name}（${m.loc}）</option>`).join('');}
 
+function projectTeamOptions(sel){
+  const p=getProject();const members=(p&&p.members&&p.members.length>0)?p.members:team.map(m=>m.name);
+  return team.filter(m=>members.includes(m.name)).map(m=>`<option value="${m.name}" ${m.name===sel?'selected':''}>${m.name}（${m.loc}）</option>`).join('');
+}
+function projMemberMultiHtml(selected){
+  if(!team.length)return'<div style="color:#b4b2a9;font-size:12px">請先在「管理成員」中新增團隊成員</div>';
+  let html=`<div class="tag-multi" id="proj-member-multi">`;
+  team.forEach(m=>{html+=`<div class="tag-opt ${selected.includes(m.name)?'selected':''}" onclick="this.classList.toggle('selected')" data-val="${m.name}">${m.name}</div>`;});
+  html+='</div>';return html;
+}
+function getProjMembers(){return[...document.querySelectorAll('#proj-member-multi .tag-opt.selected')].map(o=>o.dataset.val);}
+function projectTagMultiHtml(selected){
+  const p=getProject();const members=(p&&p.members&&p.members.length>0)?p.members:team.map(m=>m.name);
+  const allSel=selected.includes('all');
+  let html=`<div class="tag-multi" id="tag-multi"><div class="tag-opt ${allSel?'selected':''}" onclick="toggleTag('all',this)" data-val="all">@ 全部成員</div>`;
+  team.filter(m=>members.includes(m.name)).forEach(m=>{html+=`<div class="tag-opt ${selected.includes(m.name)?'selected':''}" onclick="toggleTag('${m.name}',this)" data-val="${m.name}">${m.name}</div>`;});
+  html+='</div>';return html;
+}
 function tagMultiHtml(selected){
   const allSel=selected.includes('all');
   let html=`<div class="tag-multi" id="tag-multi">
@@ -1267,6 +1327,7 @@ function openModal(type,sid,tid){
         <div><label class="form-label">開始日期</label><input class="form-input" id="m-start" type="date"></div>
         <div><label class="form-label">結束日期</label><input class="form-input" id="m-end" type="date"></div>
       </div>
+      <div class="form-row"><label class="form-label">項目成員</label>${projMemberMultiHtml([])}</div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
         <button class="btn btn-primary" onclick="submitNewProject()">新增項目</button>
@@ -1280,10 +1341,11 @@ function openModal(type,sid,tid){
         <div><label class="form-label">開始日期</label><input class="form-input" id="m-start" type="date" value="${p.start}"></div>
         <div><label class="form-label">結束日期</label><input class="form-input" id="m-end" type="date" value="${p.end}"></div>
       </div>
+      <div class="form-row"><label class="form-label">項目成員</label>${projMemberMultiHtml(p.members||[])}</div>
       ${p.archived?`<div style="background:#FDF3E3;border:1px solid #f5c99a;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#854F0B">📦 此項目已歸檔，不會顯示在主標籤列</div>`:''}
       <div class="modal-actions">
-        <button class="btn btn-danger" onclick="deleteProject()">🗑 刪除</button>
-        <button class="btn btn-secondary" onclick="archiveProject()" style="margin-right:auto">${p.archived?'📤 解除歸檔':'📦 歸檔'}</button>
+        ${isAdmin()?`<button class="btn btn-danger" onclick="deleteProject()">🗑 刪除</button>
+        <button class="btn btn-secondary" onclick="archiveProject()" style="margin-right:auto">${p.archived?'📤 解除歸檔':'📦 歸檔'}</button>`:'<span style="flex:1"></span>'}
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
         <button class="btn btn-primary" onclick="submitEditProject()">儲存</button>
       </div></div>`);
@@ -1315,7 +1377,7 @@ function openModal(type,sid,tid){
       </select></div>
       <div class="form-row"><label class="form-label">風險摘要</label><textarea class="form-input form-textarea" id="m-summary">${s.summary||''}</textarea></div>
       <div class="modal-actions">
-        <button class="btn btn-danger" onclick="deleteSection(${sid})">🗑 刪除版塊</button>
+        ${isAdmin()?`<button class="btn btn-danger" onclick="deleteSection(${sid})">🗑 刪除版塊</button>`:''}
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
         <button class="btn btn-primary" onclick="submitEditSection(${sid})">儲存</button>
       </div></div>`);
@@ -1324,7 +1386,7 @@ function openModal(type,sid,tid){
   } else if(type==='newTask'){
     showModal(`<div class="modal"><div class="modal-title">➕ 新增任務</div>
       <div class="form-row"><label class="form-label">任務名稱</label><input class="form-input" id="m-name" placeholder="如：合同條款審查"></div>
-      <div class="form-row"><label class="form-label">負責人</label><select class="form-input" id="m-assignee">${teamOptions('')}</select></div>
+      <div class="form-row"><label class="form-label">負責人</label><select class="form-input" id="m-assignee">${projectTeamOptions('')}</select></div>
       <div class="form-row-2">
         <div><label class="form-label">開始日期</label><input class="form-input" id="m-start" type="date"></div>
         <div><label class="form-label">截止日期</label><input class="form-input" id="m-end" type="date"></div>
@@ -1340,7 +1402,7 @@ function openModal(type,sid,tid){
     const sOpts=STATUSES.map(st=>`<option value="${st.key}" ${st.key===t.status?'selected':''}>${st.label}</option>`).join('');
     showModal(`<div class="modal"><div class="modal-title">✏️ 編輯任務</div>
       <div class="form-row"><label class="form-label">任務名稱</label><input class="form-input" id="m-name" value="${t.name}"></div>
-      <div class="form-row"><label class="form-label">負責人</label><select class="form-input" id="m-assignee">${teamOptions(t.assignee)}</select></div>
+      <div class="form-row"><label class="form-label">負責人</label><select class="form-input" id="m-assignee">${projectTeamOptions(t.assignee)}</select></div>
       <div class="form-row-2">
         <div><label class="form-label">開始日期</label><input class="form-input" id="m-start" type="date" value="${t.start}"></div>
         <div><label class="form-label">截止日期</label><input class="form-input" id="m-end" type="date" value="${t.end}"></div>
@@ -1363,7 +1425,7 @@ function openModal(type,sid,tid){
         <button class="btn btn-secondary btn-sm" style="margin-top:8px;width:100%" onclick="addSubtaskRow()">＋ 新增子任務</button>
       </div>
       <div class="modal-actions">
-        <button class="btn btn-danger" onclick="deleteTask(${sid},${tid})">🗑 刪除任務</button>
+        ${isAdmin()?`<button class="btn btn-danger" onclick="deleteTask(${sid},${tid})">🗑 刪除任務</button>`:''}
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
         <button class="btn btn-primary" onclick="submitEditTask()">儲存</button>
       </div></div>`);
@@ -1428,7 +1490,7 @@ function openModal(type,sid,tid){
       </div>
       <div class="form-row"><label class="form-label">跟進狀態</label><select class="form-input" id="m-followstatus">${fsOpts}</select></div>
       <div class="modal-actions">
-        <button class="btn btn-danger" onclick="deleteFinding(${f.id})">🗑 刪除</button>
+        ${isAdmin()?`<button class="btn btn-danger" onclick="deleteFinding(${f.id})">🗑 刪除</button>`:''}
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
         <button class="btn btn-primary" onclick="submitEditFinding(${f.id})">儲存</button>
       </div></div>`);
@@ -1446,7 +1508,7 @@ function openModal(type,sid,tid){
     const creatorOpts=team.map(m=>`<option value="${m.name}" ${m.name===cur2?'selected':''}>${m.name}</option>`).join('');
     showModal(`<div class="modal modal-wide"><div class="modal-title">➕ 新增指派任務</div>
       <div class="form-row"><label class="form-label">任務標題</label><input class="form-input" id="m-name" placeholder="如：請確認物料採購流程是否已更新"></div>
-      <div class="form-row"><label class="form-label">指派對象（可多選）</label>${tagMultiHtml([])}</div>
+      <div class="form-row"><label class="form-label">指派對象（可多選）</label>${projectTagMultiHtml([])}</div>
       <div class="form-row"><label class="form-label">由誰創建</label><select class="form-input" id="m-creator">${creatorOpts}</select></div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
@@ -1457,9 +1519,9 @@ function openModal(type,sid,tid){
     const a=p.assignments.find(a=>a.id===sid);if(!a)return;
     showModal(`<div class="modal modal-wide"><div class="modal-title">✏️ 編輯指派任務</div>
       <div class="form-row"><label class="form-label">任務標題</label><input class="form-input" id="m-name" value="${a.title}"></div>
-      <div class="form-row"><label class="form-label">指派對象</label>${tagMultiHtml(a.taggedTo||[])}</div>
+      <div class="form-row"><label class="form-label">指派對象</label>${projectTagMultiHtml(a.taggedTo||[])}</div>
       <div class="modal-actions">
-        <button class="btn btn-danger" onclick="deleteAssignment(${a.id})">🗑 刪除</button>
+        ${isAdmin()?`<button class="btn btn-danger" onclick="deleteAssignment(${a.id})">🗑 刪除</button>`:''}
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
         <button class="btn btn-primary" onclick="submitEditAssignment(${a.id})">儲存</button>
       </div></div>`);
@@ -1515,10 +1577,6 @@ function openModal(type,sid,tid){
         <div><label class="form-label">日期</label><input class="form-input" id="m-date" type="date" value="${today}"></div>
       </div>
       <div class="form-row"><label class="form-label">更新人員</label><select class="form-input" id="m-author">${authorOpts}</select></div>
-      <div style="margin-bottom:14px">
-        <button class="ai-btn" id="ai-gen-btn" onclick="generateWeeklyReport()">🤖 AI 生成草稿</button>
-        <div id="ai-gen-hint" style="font-size:11px;color:#888780;margin-top:6px"></div>
-      </div>
       <div class="form-row"><label class="form-label">本期摘要</label><textarea class="form-input form-textarea" id="m-summary" placeholder="本期整體審計進度概覽…"></textarea></div>
       <div class="form-row"><label class="form-label">已完成工作</label><textarea class="form-input form-textarea" id="m-completed" placeholder="• 已完成任務 A&#10;• 已完成任務 B"></textarea></div>
       <div class="form-row"><label class="form-label">進行中</label><textarea class="form-input" id="m-inprogress" style="min-height:60px" placeholder="• 正在進行的工作項目"></textarea></div>
@@ -1546,10 +1604,47 @@ function openModal(type,sid,tid){
       <div class="form-row"><label class="form-label">問題 / 阻礙</label><textarea class="form-input" id="m-issues" style="min-height:60px">${escHtml(u.issues||'')}</textarea></div>
       <div class="form-row"><label class="form-label">下期計劃</label><textarea class="form-input" id="m-nextsteps" style="min-height:60px">${escHtml(u.nextSteps||'')}</textarea></div>
       <div class="modal-actions">
-        <button class="btn btn-danger" onclick="deleteWeeklyUpdate(${u.id})">🗑 刪除</button>
+        ${isAdmin()?`<button class="btn btn-danger" onclick="deleteWeeklyUpdate(${u.id})">🗑 刪除</button>`:''}
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
         <button class="btn btn-primary" onclick="submitEditWeeklyUpdate(${u.id})">儲存</button>
       </div></div>`);
+
+  /* ── Admin modals ── */
+  } else if(type==='enterAdminPwd'){
+    showModal(`<div class="modal"><div class="modal-title">🔐 管理員登入</div>
+      <div class="form-row"><label class="form-label">管理員密碼</label>
+        <input class="form-input" id="m-pwd" type="password" placeholder="輸入密碼…" onkeydown="if(event.key==='Enter')submitEnterAdminPwd()">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="submitEnterAdminPwd()">登入</button>
+      </div></div>`);
+
+  } else if(type==='adminPanel'){
+    showModal(`<div class="modal"><div class="modal-title">🔐 管理員模式</div>
+      <div style="background:#EAF3DE;border:1px solid #c0ddba;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#3B6D11;text-align:center;font-weight:700">✅ 目前處於管理員模式</div>
+      <div style="background:#F5F3FF;border:1px solid #c9c1f0;border-radius:8px;padding:9px 12px;margin-bottom:14px;font-size:12px;color:#533AB7">🔑 如需更改管理員密碼，請直接修改 index.html 中的 <code>ADMIN_PASSWORD</code> 常數後重新分發檔案。</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn btn-danger" style="width:100%;justify-content:center;margin-right:0" onclick="confirmExitAdmin()">🔓 退出管理員模式</button>
+        <button class="btn btn-secondary" style="width:100%;justify-content:center" onclick="closeModal()">取消</button>
+      </div></div>`);
+
+  /* ── AI Analysis modal ── */
+  } else if(type==='aiAnalysis'){
+    const provider=localStorage.getItem('auditPM_aiProvider')||'';
+    const hasKey=(provider==='gemini'&&localStorage.getItem('auditPM_geminiKey'))||(provider==='zhipu'&&localStorage.getItem('auditPM_zhipuKey'));
+    showModal(`<div class="modal modal-wide" style="max-width:660px"><div class="modal-title">🤖 AI 項目分析 — ${escHtml(p.name)}</div>
+      ${!provider||!hasKey?`<div style="background:#FDF3E3;border:1px solid #f5c99a;border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:#854F0B">⚠️ 請先在「🤖 AI 設定」中設定 AI 服務及 API 密鑰</div>`:''}
+      <div id="ai-analysis-content" class="analysis-body" style="min-height:100px;background:#fafaf8;border-radius:8px;padding:16px;border:1px solid #eeece6">
+        <div style="text-align:center;color:#888780;padding:20px">點擊「開始分析」，AI 將分析任務進度、周報內容及審計覆蓋缺口</div>
+      </div>
+      <div class="modal-actions" style="margin-top:12px">
+        <button class="btn btn-secondary" id="ai-export-md-btn" style="display:none" onclick="exportAnalysisMD()">📄 下載 MD</button>
+        <button class="btn btn-secondary" id="ai-print-btn" style="display:none" onclick="printAnalysis()">🖨️ 列印 / PDF</button>
+        <button class="btn btn-secondary" onclick="closeModal()">關閉</button>
+        <button class="ai-btn" id="ai-analysis-run-btn" onclick="runProjectAnalysis()">🤖 開始分析</button>
+      </div></div>`);
+
   /* ── AI Settings modal ── */
   } else if(type==='aiSettings'){
     const aiProv=localStorage.getItem('auditPM_aiProvider')||'';
@@ -1569,8 +1664,8 @@ function openModal(type,sid,tid){
           <div class="form-hint">從 Google AI Studio (aistudio.google.com) 取得免費 API Key</div>
         </div>
         <div class="form-row"><label class="form-label">模型</label><select class="form-input" id="m-geminimodel">
-          <option value="gemini-2.0-flash" ${geminiModel==='gemini-2.0-flash'?'selected':''}>gemini-2.0-flash（推薦）</option>
-          <option value="gemini-2.5-flash-preview-05-20" ${geminiModel.includes('2.5')?'selected':''}>gemini-2.5-flash-preview</option>
+          <option value="gemini-2.5-flash-preview-05-20" ${geminiModel.includes('2.5')?'selected':''}>gemini-2.5-flash-preview（最新）</option>
+          <option value="gemini-2.0-flash" ${geminiModel==='gemini-2.0-flash'?'selected':''}>gemini-2.0-flash（穩定）</option>
           <option value="gemini-1.5-flash" ${geminiModel==='gemini-1.5-flash'?'selected':''}>gemini-1.5-flash</option>
         </select></div>
       </div>
@@ -1581,6 +1676,7 @@ function openModal(type,sid,tid){
         </div>
         <div class="form-row"><label class="form-label">模型</label><select class="form-input" id="m-zhipumodel">
           <option value="glm-4-flash" ${zhipuModel==='glm-4-flash'?'selected':''}>GLM-4-Flash（免費）</option>
+          <option value="glm-4.5-flash" ${zhipuModel==='glm-4.5-flash'?'selected':''}>GLM-4.5-Flash（免費）</option>
           <option value="glm-4-air" ${zhipuModel==='glm-4-air'?'selected':''}>GLM-4-Air</option>
           <option value="glm-4" ${zhipuModel==='glm-4'?'selected':''}>GLM-4</option>
         </select></div>
@@ -1619,8 +1715,8 @@ function saveLinks(sid,tid){
 }
 
 /* ── Submit handlers ── */
-function submitNewProject(){const name=g('m-name').trim();if(!name)return;projects.push({id:genId(),name,type:g('m-type')||'審計',start:g('m-start')||'2025-01-01',end:g('m-end')||'2025-12-31',sections:[],findings:[],assignments:[]});currentProject=projects.length-1;cloudSave();closeModal();renderContent();}
-function submitEditProject(){const p=getProject();if(!p)return;p.name=g('m-name')||p.name;p.type=g('m-type')||p.type;p.start=g('m-start')||p.start;p.end=g('m-end')||p.end;cloudSave();closeModal();renderContent();}
+function submitNewProject(){const name=g('m-name').trim();if(!name)return;projects.push({id:genId(),name,type:g('m-type')||'審計',start:g('m-start')||'2025-01-01',end:g('m-end')||'2025-12-31',sections:[],findings:[],assignments:[],weeklyUpdates:[],archived:false,members:getProjMembers()});currentProject=projects.length-1;cloudSave();closeModal();renderContent();}
+function submitEditProject(){const p=getProject();if(!p)return;p.name=g('m-name')||p.name;p.type=g('m-type')||p.type;p.start=g('m-start')||p.start;p.end=g('m-end')||p.end;p.members=getProjMembers();cloudSave();closeModal();renderContent();}
 function deleteProject(){if(!confirm(`確認刪除「${getProject().name}」及其所有內容？`))return;projects.splice(currentProject,1);currentProject=Math.max(0,currentProject-1);cloudSave();closeModal();renderContent();}
 function archiveProject(){
   const p=getProject();if(!p)return;
@@ -1723,6 +1819,126 @@ function disconnectCloud(){if(!confirm('確認斷開 Gitee 連接？'))return;cl
 /* ═══════════════════════════════════
    AI & SUBTASK HELPERS
 ═══════════════════════════════════ */
+function buildAnalysisPrompt(p){
+  const today=new Date().toISOString().slice(0,10);
+  const done=doneTasks(p),total=totalTasks(p),prog=overallProgress(p);
+  let taskDetails='';
+  p.sections.forEach(s=>{
+    const r=riskObj(s.riskLevel);
+    taskDetails+=`\n【${s.name}】${r.label}${s.milestone?` 階段:${s.milestone}`:''} 完成率${sectionPct(s)}%`;
+    s.tasks.forEach(t=>{
+      const st=statusObj(t.status);const rk=calcTaskRisk(t);
+      const rTag=rk==='overdue'?' ⚠️逾期':rk==='high'?' 🔴嚴重落後':rk==='med'?' 🟡滯後':'';
+      const stInfo=t.subtasks&&t.subtasks.length?` 子任務${t.subtasks.filter(x=>x.done).length}/${t.subtasks.length}`:'';
+      taskDetails+=`\n  • ${t.name}（${t.assignee}）：${st.label} ${t.progress}%${rTag}${stInfo} [${t.start}~${t.end}]`;
+    });
+  });
+  const updates=(p.weeklyUpdates||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
+  const updatesText=updates.length?updates.map(u=>`【${u.date} ${u.author}】\n摘要：${u.summary||'—'}\n完成：${u.completed||'—'}\n問題：${u.issues||'無'}\n下期：${u.nextSteps||'—'}`).join('\n\n'):'暫無周報記錄';
+  let findingsText='';
+  if(p.findings&&p.findings.length){
+    const byF={};FOLLOW_STATUSES.forEach(f=>{byF[f.key]=0;});
+    p.findings.forEach(f=>{byF[f.followStatus]=(byF[f.followStatus]||0)+1;});
+    findingsText=`發現總數：${p.findings.length}（待跟進:${byF.pending} 跟進中:${byF.inprog} 已完成:${byF.done} 接受風險:${byF.accepted}）`;
+    p.findings.forEach((f,i)=>{const r=riskObj(f.riskLevel);findingsText+=`\n  F-${String(i+1).padStart(3,'0')} [${r.label}] ${(f.description||'').slice(0,60)}`;});
+  }else{findingsText='暫無審計發現記錄';}
+  return`你是一位資深內部審計顧問。請根據以下「${p.name}」審計項目的完整數據，為管理層生成一份專業的審計進度分析報告。
+
+**項目資訊**
+- 名稱：${p.name}（${p.type}）
+- 週期：${p.start} 至 ${p.end}
+- 整體進度：${prog}%（${done}/${total} 任務完成）
+- 分析日期：${today}
+
+**任務明細**
+${taskDetails}
+
+**審計發現**
+${findingsText}
+
+**團隊周報記錄（最新8份）**
+${updatesText}
+
+請以繁體中文生成以下各節（Markdown格式，使用 ## 作二級標題）：
+
+## 整體進度評估
+分析項目整體健康度、按期完成的可能性。
+
+## 主要風險與問題
+列出當前最需要關注的風險點（逾期任務、落後版塊、跟進不足的發現等）。
+
+## 周報摘要與分析
+總結各同事的周報，識別共同阻礙或反覆出現的問題。
+
+## 審計覆蓋缺口
+識別哪些版塊或領域可能遺漏了重要審計步驟、發現記錄偏少或跟進不足。
+
+## 行動建議
+提出3-5項具體行動建議，按優先級排列。
+
+請保持分析專業、直接、有針對性。`;
+}
+function renderMarkdownSimple(md){
+  return`<div>`+md
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^[-•] (.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g,'<ul>$&</ul>')
+    .replace(/\n{2,}/g,'</p><p>')
+    .replace(/\n/g,'<br>')
+    +'</div>';
+}
+async function runProjectAnalysis(){
+  const p=getProject();if(!p)return;
+  const provider=localStorage.getItem('auditPM_aiProvider')||'';
+  const geminiKey=localStorage.getItem('auditPM_geminiKey')||'';
+  const zhipuKey=localStorage.getItem('auditPM_zhipuKey')||'';
+  if(!provider||(provider==='gemini'&&!geminiKey)||(provider==='zhipu'&&!zhipuKey)){
+    alert('請先在「🤖 AI 設定」中配置 AI 服務及 API 密鑰');return;
+  }
+  const btn=document.getElementById('ai-analysis-run-btn');
+  const content=document.getElementById('ai-analysis-content');
+  if(btn){btn.disabled=true;btn.textContent='⏳ 分析中…';}
+  if(content)content.innerHTML='<div style="padding:20px;text-align:center;color:#888780">🤖 AI 正在分析項目數據，請稍候…</div>';
+  try{
+    const prompt=buildAnalysisPrompt(p);
+    let result;
+    if(provider==='gemini')result=await callGemini(prompt,geminiKey,localStorage.getItem('auditPM_geminiModel')||'gemini-2.0-flash');
+    else result=await callZhipu(prompt,zhipuKey,localStorage.getItem('auditPM_zhipuModel')||'glm-4-flash');
+    window._lastAnalysisResult=result;
+    window._lastAnalysisProject=p.name;
+    if(content)content.innerHTML=renderMarkdownSimple(result);
+    ['ai-export-md-btn','ai-print-btn'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='';});
+  }catch(e){
+    if(content)content.innerHTML=`<div style="padding:16px;color:#A32D2D">❌ 分析失敗：${escHtml(e.message)}</div>`;
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🔄 重新分析';}
+  }
+}
+function exportAnalysisMD(){
+  const md=window._lastAnalysisResult||'';const proj=window._lastAnalysisProject||'分析';
+  const blob=new Blob([md],{type:'text/markdown;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`${proj}_AI分析_${new Date().toISOString().slice(0,10)}.md`;
+  a.click();URL.revokeObjectURL(a.href);
+}
+function printAnalysis(){
+  const content=document.getElementById('ai-analysis-content');if(!content)return;
+  const proj=escHtml(window._lastAnalysisProject||'項目分析');
+  const win=window.open('','_blank','width=800,height=700');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${proj} AI分析</title>
+    <style>body{font-family:Arial,'PingFang TC',sans-serif;padding:40px;max-width:760px;margin:0 auto;color:#1a1a1a;line-height:1.7}
+    h2{color:#1a3a5c;font-size:15px;margin:20px 0 6px;padding-bottom:4px;border-bottom:1px solid #ddd}
+    ul{padding-left:20px}li{margin-bottom:4px;font-size:13px}p{font-size:13px;margin:6px 0}
+    .hd{display:flex;justify-content:space-between;border-bottom:2px solid #1a3a5c;padding-bottom:8px;margin-bottom:24px}
+    .hd h1{font-size:16px;color:#1a3a5c;margin:0}.hd span{font-size:12px;color:#888;margin-top:4px}
+    </style></head><body>
+    <div class="hd"><h1>${proj} — AI 審計進度分析報告</h1><span>${new Date().toLocaleDateString('zh-HK')}</span></div>
+    ${content.innerHTML}</body></html>`);
+  win.document.close();win.focus();setTimeout(()=>win.print(),400);
+}
 function addSubtaskRow(){
   const list=document.getElementById('subtask-list');if(!list)return;
   const empty=document.getElementById('st-empty');if(empty)empty.remove();
