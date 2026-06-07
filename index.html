@@ -459,6 +459,37 @@ function migrate(p){
   return p;
 }
 
+// 不同裝置／瀏覽器各自從 8000 開始計算 id，雲端同步合併後可能撞號；
+// 此函式掃描所有資料找出最大編號（避免新 id 再次撞號），並將重複的 id 重新分配。
+function fixDuplicateIds(){
+  const numOf=raw=>{
+    if(typeof raw==='number')return raw;
+    if(typeof raw==='string'){const m=raw.match(/(\d+)$/);if(m)return parseInt(m[1],10);}
+    return NaN;
+  };
+  const seen=new Set();
+  let max=8000,changed=false;
+  const visit=v=>{
+    if(Array.isArray(v)){v.forEach(visit);return;}
+    if(v&&typeof v==='object'){
+      if(v.id!==undefined&&v.id!==null){
+        const n=numOf(v.id);
+        if(!isNaN(n)&&n>max)max=n;
+        if(seen.has(v.id)){
+          max++;
+          v.id=(typeof v.id==='string')?v.id.replace(/\d+$/,String(max)):max;
+          changed=true;
+        }
+        seen.add(v.id);
+      }
+      for(const k in v){if(k!=='id')visit(v[k]);}
+    }
+  };
+  visit(projects);visit(team);
+  if(max>nextId)nextId=max;
+  return changed;
+}
+
 function loadLocal(){
   try{
     const p=localStorage.getItem('auditPM_projects');
@@ -470,6 +501,7 @@ function loadLocal(){
     giteeRepo =localStorage.getItem('auditPM_giteeRepo')||'';
     giteeSha  =localStorage.getItem('auditPM_giteeSha')||'';
     cloudMode=!!(giteeToken&&giteeOwner&&giteeRepo);
+    if(fixDuplicateIds())saveLocalCache();
   }catch(e){
     projects=JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
     team=JSON.parse(JSON.stringify(DEFAULT_TEAM));
@@ -522,7 +554,9 @@ async function cloudLoad(){
     let data;try{data=fromB64(json.content);}catch(e2){setSyncStatus('warn','雲端數據損壞，正在重寫…');return await cloudSaveForce();}
     if(data&&data.projects)projects=data.projects.map(migrate);
     if(data&&data.team)team=data.team;
-    saveLocalCache();setSyncStatus('ok',`Gitee 同步成功 · ${new Date().toLocaleTimeString('zh-HK')}`);
+    if(fixDuplicateIds()){saveLocalCache();await cloudSaveForce();}
+    else saveLocalCache();
+    setSyncStatus('ok',`Gitee 同步成功 · ${new Date().toLocaleTimeString('zh-HK')}`);
     renderIdentityPicker();return true;
   }catch(e){setSyncStatus('err','載入失敗：'+e.message);addDiagLog('cloudLoad error: '+e.message);return false;}
 }
