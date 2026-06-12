@@ -560,20 +560,35 @@ async function cloudLoad(){
     renderIdentityPicker();return true;
   }catch(e){setSyncStatus('err','載入失敗：'+e.message);addDiagLog('cloudLoad error: '+e.message);return false;}
 }
+async function _giteeWrite(){
+  const body={access_token:giteeToken,content:toB64({projects,team}),message:'audit-pm update'};
+  let method='POST';
+  if(/^[0-9a-f]{20,}/i.test(giteeSha)){body.sha=giteeSha;method='PUT';}
+  return fetch(giteeBase(),{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+}
 async function cloudSaveForce(){
   try{
-    const body={access_token:giteeToken,content:toB64({projects,team}),message:'audit-pm update'};
-    let method='POST',url=giteeBase();
-    const validSha=/^[0-9a-f]{20,}/i.test(giteeSha);
-    if(validSha){body.sha=giteeSha;method='PUT';}
-    const res=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    let res=await _giteeWrite();
+    if(res.status===400||res.status===409){
+      // sha 過期（其他人或本頁先前的儲存已更新文件）— 重取 sha 後重試一次
+      const r=await fetch(giteeBase()+'?access_token='+encodeURIComponent(giteeToken));
+      if(r.ok){const j=await r.json();if(j&&j.sha&&/^[0-9a-f]{20,}/i.test(j.sha))giteeSha=j.sha;}
+      res=await _giteeWrite();
+    }
     if(!res.ok)throw new Error('HTTP '+res.status+' — '+await res.text());
     const json=await res.json();
     giteeSha=json.content?.sha||giteeSha;saveLocalCache();
     setSyncStatus('ok',`已儲存至 Gitee · ${new Date().toLocaleTimeString('zh-HK')}`);return true;
   }catch(e){setSyncStatus('err','儲存失敗：'+e.message);addDiagLog('cloudSaveForce error: '+e.message);return false;}
 }
-async function cloudSave(){saveLocalCache();if(!cloudMode)return;setSyncStatus('warn','儲存中…');await cloudSaveForce();}
+let _saveChain=Promise.resolve();
+async function cloudSave(){
+  saveLocalCache();if(!cloudMode)return;
+  setSyncStatus('warn','儲存中…');
+  // 排隊執行，避免多個儲存並行導致 sha 衝突
+  _saveChain=_saveChain.then(()=>cloudSaveForce());
+  await _saveChain;
+}
 
 let diagLog=[];
 function addDiagLog(msg){diagLog.push(`[${new Date().toLocaleTimeString()}] ${msg}`);}
@@ -638,9 +653,9 @@ function renderIdentityPicker(){
   if(!dd)return;
   dd.innerHTML=team.map(m=>{
     const mc2=memberColor(m.name);
-    return`<div class="identity-option ${m.name===cur?'active':''}" onclick="setCurrentUser('${m.name}');toggleIdentityDropdown()">
+    return`<div class="identity-option ${m.name===cur?'active':''}" data-name="${escHtml(m.name)}" onclick="setCurrentUser(this.dataset.name);toggleIdentityDropdown()">
       <div class="identity-avatar" style="background:${mc2.bg};color:${mc2.tc}">${memberInitials(m.name)}</div>
-      <span>${m.name}</span><span style="font-size:10px;color:#888780;margin-left:4px">${m.loc}</span>
+      <span>${escHtml(m.name)}</span><span style="font-size:10px;color:#888780;margin-left:4px">${escHtml(m.loc)}</span>
     </div>`;
   }).join('');
 }
@@ -708,11 +723,11 @@ function renderContent(){
   let html=`<div class="proj-header">
     <div style="flex:1">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <div class="proj-name">${p.name}</div>
+        <div class="proj-name">${escHtml(p.name)}</div>
         <button class="add-task-btn" style="font-size:12px" onclick="openModal('editProject')">✏️ 編輯項目</button>
       ${isAdmin()?`<button class="add-task-btn" style="font-size:12px;color:#533AB7;font-weight:700" onclick="openModal('aiAnalysis')">🤖 AI 分析</button>`:''}
       </div>
-      <div class="proj-dates">📅 ${fmtDate(p.start)} → ${fmtDate(p.end)} &nbsp;|&nbsp; 類型：${p.type} &nbsp;|&nbsp; ${doneTasks(p)}/${totalTasks(p)} 任務完成</div>
+      <div class="proj-dates">📅 ${fmtDate(p.start)} → ${fmtDate(p.end)} &nbsp;|&nbsp; 類型：${escHtml(p.type)} &nbsp;|&nbsp; ${doneTasks(p)}/${totalTasks(p)} 任務完成</div>
     </div>
     <div class="stat-progress">
       <div class="prog-label">整體進度 ${prog}%</div>
@@ -765,7 +780,7 @@ function renderRisk(p){
     html+=`<div class="risk-section-card">
       <div class="risk-section-top">
         <div class="section-dot" style="background:${s.color}"></div>
-        <div style="font-size:14px;font-weight:700;color:#1a1a1a;flex:1">${s.name}</div>
+        <div style="font-size:14px;font-weight:700;color:#1a1a1a;flex:1">${escHtml(s.name)}</div>
         <span class="${r.cls}">${r.label}</span>
         <button class="add-task-btn" style="font-size:12px;margin-left:8px" onclick="openModal('editRiskSection',${s.id})">✏️ 編輯</button>
       </div>
@@ -789,7 +804,7 @@ function renderTaskViewMobile(p){
     html+=`<div class="section-card">
       <div class="section-head" onclick="toggleSection(${s.id})">
         <div class="section-dot" style="background:${s.color}"></div>
-        <div class="section-title">${s.name}</div>
+        <div class="section-title">${escHtml(s.name)}</div>
         <span class="${r.cls}" style="font-size:10px;padding:1px 7px;margin-right:4px">${r.label}</span>
         <div style="font-size:11px;color:#888780;margin-right:6px">${s.tasks.length} 個 | ${sectionPct(s)}%</div>
         <div class="chevron ${s.open?'open':''}">▶</div>
@@ -808,7 +823,7 @@ function renderTaskViewMobile(p){
             <label>負責人</label>
             <span class="assignee-badge" style="background:${mc.bg};color:${mc.tc};font-size:11px">
               <span style="width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block"></span>
-              ${t.assignee}</span>
+              ${escHtml(t.assignee)}</span>
           </div>
           <div class="task-card-m-row">
             <label>日期</label>
@@ -874,7 +889,7 @@ function renderTaskView(p){
           <td data-label="任務" style="vertical-align:top"><span class="drag-handle">⠿</span> <span style="font-weight:600">${escHtml(t.name)}</span>${(()=>{const r=calcTaskRisk(t);const dot=r==='none'?'':r==='overdue'?`<span style="width:7px;height:7px;border-radius:50%;background:#A32D2D;display:inline-block;vertical-align:middle;margin-left:4px;animation:pulse 1.2s infinite" title="已逾期"></span>`:r==='high'?`<span style="width:7px;height:7px;border-radius:50%;background:#A32D2D;display:inline-block;vertical-align:middle;margin-left:4px" title="進度嚴重落後"></span>`:`<span style="width:7px;height:7px;border-radius:50%;background:#BA7517;display:inline-block;vertical-align:middle;margin-left:4px" title="進度略落後"></span>`;return dot;})()}${t.subtasks&&t.subtasks.length?`<span class="subtask-count">${t.subtasks.filter(x=>x.done).length}/${t.subtasks.length}</span>`:''}${renderSubtaskList(s.id,t.id,t.subtasks||[])}</td>
           <td data-label="負責人"><span class="assignee-badge" style="background:${mc.bg};color:${mc.tc}">
             <span style="width:5px;height:5px;border-radius:50%;background:currentColor;display:inline-block;flex-shrink:0"></span>
-            ${t.assignee}</span></td>
+            ${escHtml(t.assignee)}</span></td>
           <td data-label="開始" style="font-size:11px;color:#888780">${fmtDate(t.start)}</td>
           <td data-label="截止" style="font-size:11px;color:#888780">${fmtDate(t.end)}</td>
           <td data-label="狀態"><span class="status-badge ${st2.cls}" onclick="cycleStatus(${s.id},${t.id})" title="點擊切換">${st2.label}</span></td>
@@ -925,13 +940,13 @@ function renderGantt(p){
       <div class="gantt-months">${months.map(m=>`<div class="gantt-month">${m.y}/${String(m.m+1).padStart(2,'0')}</div>`).join('')}</div>
     </div>`;
   p.sections.forEach(s=>{
-    html+=`<div class="gantt-row"><div class="gantt-section-label" style="color:${s.color}">${s.name}</div><div class="gantt-section-timeline"></div></div>`;
+    html+=`<div class="gantt-row"><div class="gantt-section-label" style="color:${s.color}">${escHtml(s.name)}</div><div class="gantt-section-timeline"></div></div>`;
     s.tasks.forEach(t=>{
       const l=pct(t.start),w=Math.max(0.8,pct(t.end)-l);
       const op=t.status==='done'?1:t.status==='wip'?.8:.4;
       const wd=workdays(t.start,t.end);
       html+=`<div class="gantt-row">
-        <div class="gantt-task-label" title="${t.name} (${t.assignee})">${t.name}</div>
+        <div class="gantt-task-label" title="${escHtml(t.name)} (${escHtml(t.assignee)})">${escHtml(t.name)}</div>
         <div class="gantt-timeline">
           <div class="gantt-bar" style="left:${l}%;width:${w}%;background:${s.color};opacity:${op}"></div>
           <div style="position:absolute;left:calc(${l}% + 4px);top:50%;transform:translateY(-50%);font-size:9px;font-weight:700;color:#fff;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.4)">${w>3?wd+'d':''}</div>
@@ -940,7 +955,7 @@ function renderGantt(p){
     });
   });
   html+=`</div><div class="legend">
-    ${p.sections.map(s=>`<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div>${s.name}</div>`).join('')}
+    ${p.sections.map(s=>`<div class="legend-item"><div class="legend-dot" style="background:${s.color}"></div>${escHtml(s.name)}</div>`).join('')}
     ${STATUSES.map(s=>`<div class="legend-item"><div class="legend-dot ${s.cls}" style="border-radius:50%"></div>${s.label}</div>`).join('')}
   </div></div>`;
   return html;
@@ -1029,7 +1044,7 @@ function renderAssignments(p){
       <div class="assign-top">
         <div style="flex:1">
           <div class="assign-title">${escHtml(a.title)}</div>
-          <div style="font-size:11px;color:#888780;margin-top:2px">由 ${a.createdBy} 於 ${fmtTs(a.createdTs)} 創建</div>
+          <div style="font-size:11px;color:#888780;margin-top:2px">由 ${escHtml(a.createdBy)} 於 ${fmtTs(a.createdTs)} 創建</div>
         </div>
         <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;flex-shrink:0">
           <input type="checkbox" ${a.closed?'checked':''} onchange="toggleAssignment(${a.id})" style="width:14px;height:14px">
@@ -1049,7 +1064,7 @@ function renderAssignments(p){
    WEEKLY UPDATES VIEW
 ═══════════════════════════════════ */
 function renderWeeklyUpdates(p){
-  const updates=(p.weeklyUpdates||[]).slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const updates=(p.weeklyUpdates||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   let html=`<div>
     <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
       <button class="btn btn-primary btn-sm" onclick="openModal('newWeeklyUpdate')">＋ 新增週報</button>
@@ -1183,7 +1198,7 @@ function renderCommentThread(comments, type, parentId){
   });
   // Input row — auto-uses current identity, still allows per-comment override
   const cur=currentUser();const mc2=memberColor(cur);
-  const memberOpts=team.map(m=>`<option value="${m.name}" ${m.name===cur?'selected':''}>${m.name}</option>`).join('');
+  const memberOpts=team.map(m=>`<option value="${escHtml(m.name)}" ${m.name===cur?'selected':''}>${escHtml(m.name)}</option>`).join('');
   html+=`<div style="margin-top:8px">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
       <div class="identity-avatar" style="background:${mc2.bg};color:${mc2.tc};width:20px;height:20px;flex-shrink:0">${memberInitials(cur)}</div>
@@ -1290,9 +1305,18 @@ function dragDrop(e,targetSid,targetTid){
    MODAL SYSTEM
 ═══════════════════════════════════ */
 function g(id){const el=document.getElementById(id);return el?el.value:'';}
-function showModal(html){document.getElementById('modal-root').innerHTML=`<div class="modal-overlay" id="overlay" onclick="overlayClick(event)">${html}</div>`;}
-function closeModal(){document.getElementById('modal-root').innerHTML='';}
-function overlayClick(e){if(e.target.id==='overlay')closeModal();}
+let _modalDirty=false;
+function showModal(html){
+  document.getElementById('modal-root').innerHTML=`<div class="modal-overlay" id="overlay" onclick="overlayClick(event)">${html}</div>`;
+  _modalDirty=false;
+  document.getElementById('overlay').addEventListener('input',()=>{_modalDirty=true;});
+}
+function closeModal(){document.getElementById('modal-root').innerHTML='';_modalDirty=false;}
+function overlayClick(e){
+  if(e.target.id!=='overlay')return;
+  if(_modalDirty&&!confirm('尚有未儲存的輸入內容，確定關閉？'))return;
+  closeModal();
+}
 
 function colorSwatchesHtml(sel){
   return`<div class="color-picker">${COLORS_10.map(c=>`<div class="color-swatch ${c.hex===sel?'selected':''}" style="background:${c.hex}" onclick="selectColor('${c.hex}',this)"></div>`).join('')}</div>
@@ -1311,31 +1335,31 @@ function selectRisk(key,el){
   el.classList.add('sel-'+key);document.getElementById('m-risk').value=key;
 }
 
-function teamOptions(sel){return team.map(m=>`<option value="${m.name}" ${m.name===sel?'selected':''}>${m.name}（${m.loc}）</option>`).join('');}
+function teamOptions(sel){return team.map(m=>`<option value="${escHtml(m.name)}" ${m.name===sel?'selected':''}>${escHtml(m.name)}（${escHtml(m.loc)}）</option>`).join('');}
 
 function projectTeamOptions(sel){
   const p=getProject();const members=(p&&p.members&&p.members.length>0)?p.members:team.map(m=>m.name);
-  return team.filter(m=>members.includes(m.name)).map(m=>`<option value="${m.name}" ${m.name===sel?'selected':''}>${m.name}（${m.loc}）</option>`).join('');
+  return team.filter(m=>members.includes(m.name)).map(m=>`<option value="${escHtml(m.name)}" ${m.name===sel?'selected':''}>${escHtml(m.name)}（${escHtml(m.loc)}）</option>`).join('');
 }
 function projMemberMultiHtml(selected){
   if(!team.length)return'<div style="color:#b4b2a9;font-size:12px">請先在「管理成員」中新增團隊成員</div>';
   let html=`<div class="tag-multi" id="proj-member-multi">`;
-  team.forEach(m=>{html+=`<div class="tag-opt ${selected.includes(m.name)?'selected':''}" onclick="this.classList.toggle('selected')" data-val="${m.name}">${m.name}</div>`;});
+  team.forEach(m=>{html+=`<div class="tag-opt ${selected.includes(m.name)?'selected':''}" onclick="this.classList.toggle('selected')" data-val="${escHtml(m.name)}">${escHtml(m.name)}</div>`;});
   html+='</div>';return html;
 }
 function getProjMembers(){return[...document.querySelectorAll('#proj-member-multi .tag-opt.selected')].map(o=>o.dataset.val);}
 function projectTagMultiHtml(selected){
   const p=getProject();const members=(p&&p.members&&p.members.length>0)?p.members:team.map(m=>m.name);
   const allSel=selected.includes('all');
-  let html=`<div class="tag-multi" id="tag-multi"><div class="tag-opt ${allSel?'selected':''}" onclick="toggleTag('all',this)" data-val="all">@ 全部成員</div>`;
-  team.filter(m=>members.includes(m.name)).forEach(m=>{html+=`<div class="tag-opt ${selected.includes(m.name)?'selected':''}" onclick="toggleTag('${m.name}',this)" data-val="${m.name}">${m.name}</div>`;});
+  let html=`<div class="tag-multi" id="tag-multi"><div class="tag-opt ${allSel?'selected':''}" onclick="toggleTag(this.dataset.val,this)" data-val="all">@ 全部成員</div>`;
+  team.filter(m=>members.includes(m.name)).forEach(m=>{html+=`<div class="tag-opt ${selected.includes(m.name)?'selected':''}" onclick="toggleTag(this.dataset.val,this)" data-val="${escHtml(m.name)}">${escHtml(m.name)}</div>`;});
   html+='</div>';return html;
 }
 function tagMultiHtml(selected){
   const allSel=selected.includes('all');
   let html=`<div class="tag-multi" id="tag-multi">
-    <div class="tag-opt ${allSel?'selected':''}" onclick="toggleTag('all',this)" data-val="all">@ 全部成員</div>`;
-  team.forEach(m=>{html+=`<div class="tag-opt ${selected.includes(m.name)?'selected':''}" onclick="toggleTag('${m.name}',this)" data-val="${m.name}">${m.name}</div>`;});
+    <div class="tag-opt ${allSel?'selected':''}" onclick="toggleTag(this.dataset.val,this)" data-val="all">@ 全部成員</div>`;
+  team.forEach(m=>{html+=`<div class="tag-opt ${selected.includes(m.name)?'selected':''}" onclick="toggleTag(this.dataset.val,this)" data-val="${escHtml(m.name)}">${escHtml(m.name)}</div>`;});
   html+='</div>';return html;
 }
 function toggleTag(val,el){
@@ -1399,7 +1423,7 @@ function openModal(type,sid,tid){
   } else if(type==='editRiskSection'){
     const s=p.sections.find(s=>s.id===sid);if(!s)return;
     showModal(`<div class="modal"><div class="modal-title">✏️ 編輯版塊</div>
-      <div class="form-row"><label class="form-label">版塊名稱</label><input class="form-input" id="m-name" value="${s.name}"></div>
+      <div class="form-row"><label class="form-label">版塊名稱</label><input class="form-input" id="m-name" value="${escHtml(s.name)}"></div>
       <div class="form-row"><label class="form-label">版塊顏色</label>${colorSwatchesHtml(s.color)}</div>
       <div class="form-row"><label class="form-label">風險水平</label>${riskPickerHtml(s.riskLevel)}</div>
       <div class="form-row"><label class="form-label">審計階段（可選）</label><select class="form-input" id="m-milestone">
@@ -1409,7 +1433,7 @@ function openModal(type,sid,tid){
         <option value="報告撰寫" ${s.milestone==='報告撰寫'?'selected':''}>報告撰寫</option>
         <option value="跟進" ${s.milestone==='跟進'?'selected':''}>跟進</option>
       </select></div>
-      <div class="form-row"><label class="form-label">風險摘要</label><textarea class="form-input form-textarea" id="m-summary">${s.summary||''}</textarea></div>
+      <div class="form-row"><label class="form-label">風險摘要</label><textarea class="form-input form-textarea" id="m-summary">${escHtml(s.summary||'')}</textarea></div>
       <div class="modal-actions">
         ${isAdmin()?`<button class="btn btn-danger" onclick="deleteSection(${sid})">🗑 刪除版塊</button>`:''}
         <button class="btn btn-secondary" onclick="closeModal()">取消</button>
@@ -1435,7 +1459,7 @@ function openModal(type,sid,tid){
     const s=p.sections.find(s=>s.id===sid);const t=s&&s.tasks.find(t=>t.id===tid);if(!t)return;
     const sOpts=STATUSES.map(st=>`<option value="${st.key}" ${st.key===t.status?'selected':''}>${st.label}</option>`).join('');
     showModal(`<div class="modal"><div class="modal-title">✏️ 編輯任務</div>
-      <div class="form-row"><label class="form-label">任務名稱</label><input class="form-input" id="m-name" value="${t.name}"></div>
+      <div class="form-row"><label class="form-label">任務名稱</label><input class="form-input" id="m-name" value="${escHtml(t.name)}"></div>
       <div class="form-row"><label class="form-label">負責人</label><select class="form-input" id="m-assignee">${projectTeamOptions(t.assignee)}</select></div>
       <div class="form-row-2">
         <div><label class="form-label">開始日期</label><input class="form-input" id="m-start" type="date" value="${t.start}"></div>
@@ -1445,7 +1469,7 @@ function openModal(type,sid,tid){
         <div><label class="form-label">狀態</label><select class="form-input" id="m-status">${sOpts}</select></div>
         <div><label class="form-label">進度 %</label><input class="form-input" id="m-progress" type="number" min="0" max="100" step="10" value="${t.progress}"></div>
       </div>
-      <div class="form-row"><label class="form-label">備注</label><input class="form-input" id="m-notes" value="${t.notes||''}"></div>
+      <div class="form-row"><label class="form-label">備注</label><input class="form-input" id="m-notes" value="${escHtml(t.notes||'')}"></div>
       <div class="form-row"><label class="form-label">子任務清單</label>
         <div id="subtask-list">${(t.subtasks||[]).length?
           (t.subtasks||[]).map((st,i)=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
@@ -1490,8 +1514,8 @@ function openModal(type,sid,tid){
 
   /* ── Findings modals ── */
   } else if(type==='newFinding'){
-    const secOpts=p.sections.map(s=>`<option value="${s.name}">${s.name}</option>`).join('')+'<option value="其他">其他</option>';
-    const aOpts=`<option value="">— 選擇 —</option>`+team.map(m=>`<option value="${m.name}">${m.name}</option>`).join('');
+    const secOpts=p.sections.map(s=>`<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('')+'<option value="其他">其他</option>';
+    const aOpts=`<option value="">— 選擇 —</option>`+team.map(m=>`<option value="${escHtml(m.name)}">${escHtml(m.name)}</option>`).join('');
     showModal(`<div class="modal modal-wide"><div class="modal-title">➕ 新增審計發現</div>
       <div class="form-row"><label class="form-label">所屬版塊</label><select class="form-input" id="m-sec">${secOpts}</select></div>
       <div class="form-row"><label class="form-label">風險水平</label>${riskPickerHtml('med')}</div>
@@ -1509,15 +1533,15 @@ function openModal(type,sid,tid){
 
   } else if(type==='editFinding'){
     const f=p.findings.find(f=>f.id===sid);if(!f)return;
-    const secOpts=p.sections.map(s=>`<option value="${s.name}" ${s.name===f.sectionName?'selected':''}>${s.name}</option>`).join('')+`<option value="其他" ${f.sectionName==='其他'?'selected':''}>其他</option>`;
-    const aOpts=`<option value="">— 選擇 —</option>`+team.map(m=>`<option value="${m.name}" ${m.name===f.assignee?'selected':''}>${m.name}</option>`).join('');
+    const secOpts=p.sections.map(s=>`<option value="${escHtml(s.name)}" ${s.name===f.sectionName?'selected':''}>${escHtml(s.name)}</option>`).join('')+`<option value="其他" ${f.sectionName==='其他'?'selected':''}>其他</option>`;
+    const aOpts=`<option value="">— 選擇 —</option>`+team.map(m=>`<option value="${escHtml(m.name)}" ${m.name===f.assignee?'selected':''}>${escHtml(m.name)}</option>`).join('');
     const fsOpts=FOLLOW_STATUSES.map(fs=>`<option value="${fs.key}" ${fs.key===f.followStatus?'selected':''}>${fs.label}</option>`).join('');
     showModal(`<div class="modal modal-wide"><div class="modal-title">✏️ 編輯審計發現</div>
       <div class="form-row"><label class="form-label">所屬版塊</label><select class="form-input" id="m-sec">${secOpts}</select></div>
       <div class="form-row"><label class="form-label">風險水平</label>${riskPickerHtml(f.riskLevel)}</div>
-      <div class="form-row"><label class="form-label">發現描述</label><textarea class="form-input form-textarea" id="m-desc">${f.description||''}</textarea></div>
-      <div class="form-row"><label class="form-label">審計建議</label><textarea class="form-input form-textarea" id="m-rec">${f.recommendation||''}</textarea></div>
-      <div class="form-row"><label class="form-label">管理層回覆</label><textarea class="form-input" id="m-reply" style="min-height:60px">${f.mgmtReply||''}</textarea></div>
+      <div class="form-row"><label class="form-label">發現描述</label><textarea class="form-input form-textarea" id="m-desc">${escHtml(f.description||'')}</textarea></div>
+      <div class="form-row"><label class="form-label">審計建議</label><textarea class="form-input form-textarea" id="m-rec">${escHtml(f.recommendation||'')}</textarea></div>
+      <div class="form-row"><label class="form-label">管理層回覆</label><textarea class="form-input" id="m-reply" style="min-height:60px">${escHtml(f.mgmtReply||'')}</textarea></div>
       <div class="form-row-2">
         <div><label class="form-label">責任人</label><select class="form-input" id="m-assignee">${aOpts}</select></div>
         <div><label class="form-label">整改期限</label><input class="form-input" id="m-deadline" type="date" value="${f.deadline||''}"></div>
@@ -1539,7 +1563,7 @@ function openModal(type,sid,tid){
   /* ── Assignment modals ── */
   } else if(type==='newAssignment'){
     const cur2=currentUser();
-    const creatorOpts=team.map(m=>`<option value="${m.name}" ${m.name===cur2?'selected':''}>${m.name}</option>`).join('');
+    const creatorOpts=team.map(m=>`<option value="${escHtml(m.name)}" ${m.name===cur2?'selected':''}>${escHtml(m.name)}</option>`).join('');
     showModal(`<div class="modal modal-wide"><div class="modal-title">➕ 新增指派任務</div>
       <div class="form-row"><label class="form-label">任務標題</label><input class="form-input" id="m-name" placeholder="如：請確認物料採購流程是否已更新"></div>
       <div class="form-row"><label class="form-label">指派對象（可多選）</label>${projectTagMultiHtml([])}</div>
@@ -1552,7 +1576,7 @@ function openModal(type,sid,tid){
   } else if(type==='editAssignment'){
     const a=p.assignments.find(a=>a.id===sid);if(!a)return;
     showModal(`<div class="modal modal-wide"><div class="modal-title">✏️ 編輯指派任務</div>
-      <div class="form-row"><label class="form-label">任務標題</label><input class="form-input" id="m-name" value="${a.title}"></div>
+      <div class="form-row"><label class="form-label">任務標題</label><input class="form-input" id="m-name" value="${escHtml(a.title)}"></div>
       <div class="form-row"><label class="form-label">指派對象</label>${projectTagMultiHtml(a.taggedTo||[])}</div>
       <div class="modal-actions">
         ${isAdmin()?`<button class="btn btn-danger" onclick="deleteAssignment(${a.id})">🗑 刪除</button>`:''}
@@ -1601,7 +1625,7 @@ function openModal(type,sid,tid){
   } else if(type==='newWeeklyUpdate'){
     const cur2=currentUser();
     const today=new Date().toISOString().slice(0,10);
-    const authorOpts=team.map(m=>`<option value="${m.name}" ${m.name===cur2?'selected':''}>${m.name}</option>`).join('');
+    const authorOpts=team.map(m=>`<option value="${escHtml(m.name)}" ${m.name===cur2?'selected':''}>${escHtml(m.name)}</option>`).join('');
     showModal(`<div class="modal modal-wide"><div class="modal-title">➕ 新增進度週報</div>
       <div class="form-row"><label class="form-label">標題</label><input class="form-input" id="m-name" placeholder="如：第12週審計進度更新"></div>
       <div class="form-row-2">
@@ -1624,7 +1648,7 @@ function openModal(type,sid,tid){
   } else if(type==='editWeeklyUpdate'){
     const u=(p.weeklyUpdates||[]).find(u=>u.id===sid);if(!u)return;
     const typeOpts=['weekly','biweekly'].map(t=>`<option value="${t}" ${t===u.updateType?'selected':''}>${t==='weekly'?'週報':'雙週報'}</option>`).join('');
-    const authorOpts2=team.map(m=>`<option value="${m.name}" ${m.name===u.author?'selected':''}>${m.name}</option>`).join('');
+    const authorOpts2=team.map(m=>`<option value="${escHtml(m.name)}" ${m.name===u.author?'selected':''}>${escHtml(m.name)}</option>`).join('');
     showModal(`<div class="modal modal-wide"><div class="modal-title">✏️ 編輯週報</div>
       <div class="form-row"><label class="form-label">標題</label><input class="form-input" id="m-name" value="${escHtml(u.title||'')}"></div>
       <div class="form-row-2">
@@ -1717,7 +1741,7 @@ function openModal(type,sid,tid){
       </div>
       <div style="padding:12px;background:#fafaf8;border-radius:8px;border:1px solid #eeece6;font-size:12px;color:#5f5e5a;margin-top:8px">
         <strong style="color:#1a3a5c">✨ 目前支援的 AI 功能</strong><br>
-        • 📋 週報：點擊「🤖 AI 生成草稿」自動分析任務進度並生成初稿<br>
+        • 🤖 AI 項目分析（管理員）：分析任務進度、總結周報、識別審計覆蓋缺口<br>
         • 📊 工作量：逾期風險評估（本地算法，無需 AI Key）
       </div>
       <div class="modal-actions">
@@ -1810,7 +1834,7 @@ function deleteWeeklyUpdate(uid){
 function renderTeamModal(){
   const rows=team.map(m=>{const mc=LOC_COLORS[m.loc]||{bg:'#E8E6F0',tc:'#533AB7'};return`<div class="team-member-row">
     <div class="member-avatar" style="background:${mc.bg};color:${mc.tc};font-size:${m.name.length>2?'9px':'11px'}">${memberInitials(m.name)}</div>
-    <div class="member-info">${m.name}<span class="member-loc">${m.loc}</span></div>
+    <div class="member-info">${escHtml(m.name)}<span class="member-loc">${escHtml(m.loc)}</span></div>
     <button class="member-btn" onclick="editMember('${m.id}')">✏️</button>
     <button class="member-btn" onclick="deleteMember('${m.id}')" style="color:#e4a0a0">✕</button>
   </div>`;}).join('');
@@ -1831,8 +1855,8 @@ function addMember(){const name=g('m-tname').trim();if(!name)return;team.push({i
 function deleteMember(id){if(!confirm('確認刪除？'))return;team=team.filter(m=>m.id!==id);cloudSave();renderTeamModal();}
 function editMember(id){const m=team.find(m=>m.id===id);if(!m)return;showModal(`<div class="modal">
   <div class="modal-title">✏️ 編輯成員</div>
-  <div class="form-row"><label class="form-label">姓名</label><input class="form-input" id="m-ename" value="${m.name}"></div>
-  <div class="form-row"><label class="form-label">所在地區</label><input class="form-input" id="m-eloc" value="${m.loc}" placeholder="如：香港、河源、成都"></div>
+  <div class="form-row"><label class="form-label">姓名</label><input class="form-input" id="m-ename" value="${escHtml(m.name)}"></div>
+  <div class="form-row"><label class="form-label">所在地區</label><input class="form-input" id="m-eloc" value="${escHtml(m.loc)}" placeholder="如：香港、河源、成都"></div>
   <div class="modal-actions">
     <button class="btn btn-secondary" onclick="openModal('teamManager')">返回</button>
     <button class="btn btn-primary" onclick="saveMember('${id}')">儲存</button>
@@ -1867,7 +1891,7 @@ function buildAnalysisPrompt(p){
       taskDetails+=`\n  • ${t.name}（${t.assignee}）：${st.label} ${t.progress}%${rTag}${stInfo} [${t.start}~${t.end}]`;
     });
   });
-  const updates=(p.weeklyUpdates||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8);
+  const updates=(p.weeklyUpdates||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,8);
   const updatesText=updates.length?updates.map(u=>`【${u.date} ${u.author}】\n摘要：${u.summary||'—'}\n完成：${u.completed||'—'}\n問題：${u.issues||'無'}\n下期：${u.nextSteps||'—'}`).join('\n\n'):'暫無周報記錄';
   let findingsText='';
   if(p.findings&&p.findings.length){
@@ -2005,7 +2029,7 @@ async function callGemini(prompt,key,model){
   const m=model||'gemini-2.0-flash';
   const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(key)}`,{
     method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.7,maxOutputTokens:1024}})
+    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.7,maxOutputTokens:4096}})
   });
   if(!res.ok){const t=await res.text();throw new Error('Gemini '+res.status+': '+t.slice(0,120));}
   const j=await res.json();
@@ -2017,55 +2041,13 @@ async function callZhipu(prompt,key,model){
   const m=model||'glm-4-flash';
   const res=await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions',{
     method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-    body:JSON.stringify({model:m,messages:[{role:'user',content:prompt}],temperature:0.7,max_tokens:1024})
+    body:JSON.stringify({model:m,messages:[{role:'user',content:prompt}],temperature:0.7,max_tokens:4096})
   });
   if(!res.ok){const t=await res.text();throw new Error('Zhipu '+res.status+': '+t.slice(0,120));}
   const j=await res.json();
   const text=j.choices?.[0]?.message?.content;
   if(!text)throw new Error('Zhipu 無回應內容');
   return text;
-}
-function buildWeeklyReportPrompt(p){
-  const today=new Date().toISOString().slice(0,10);
-  const done=doneTasks(p),total=totalTasks(p),prog=overallProgress(p);
-  let sectionInfo='';
-  p.sections.forEach(s=>{
-    const r=riskObj(s.riskLevel);
-    sectionInfo+='\n【'+s.name+'】'+r.label+' 完成率'+sectionPct(s)+'%';
-    s.tasks.forEach(t=>{
-      const st=statusObj(t.status);const rk=calcTaskRisk(t);
-      const rTag=rk==='overdue'?' ⚠️逾期':rk==='high'?' 🔴落後':rk==='med'?' 🟡滯後':'';
-      sectionInfo+='\n  • '+t.name+'（'+t.assignee+'）：'+st.label+' '+t.progress+'%'+rTag;
-    });
-  });
-  return '你是內部審計項目管理助手。請根據以下數據生成繁體中文週報草稿。\n\n項目：'+p.name+'（'+p.type+'）\n週期：'+p.start+' 至 '+p.end+'\n整體進度：'+prog+'%（'+done+'/'+total+' 任務完成）\n生成日期：'+today+'\n\n各版塊任務狀態：'+sectionInfo+'\n\n請生成週報，只返回以下JSON格式，不要其他文字：\n{"summary":"2-3句整體摘要","completed":"已完成工作（每項以•開頭，換行分隔）","inProgress":"進行中工作（每項以•開頭）","issues":"問題或阻礙（如無填空字串）","nextSteps":"下期計劃（每項以•開頭）"}';
-}
-async function generateWeeklyReport(){
-  const p=getProject();if(!p)return;
-  const provider=localStorage.getItem('auditPM_aiProvider')||'';
-  const geminiKey=localStorage.getItem('auditPM_geminiKey')||'';
-  const zhipuKey=localStorage.getItem('auditPM_zhipuKey')||'';
-  if(!provider||(provider==='gemini'&&!geminiKey)||(provider==='zhipu'&&!zhipuKey)){
-    alert('請先在「🤖 AI」中設定 AI 服務商及 API 密鑰');return;
-  }
-  const btn=document.getElementById('ai-gen-btn');const hint=document.getElementById('ai-gen-hint');
-  if(btn){btn.disabled=true;btn.textContent='⏳ 生成中…';}
-  if(hint)hint.textContent='AI 正在分析項目數據，請稍候…';
-  try{
-    const prompt=buildWeeklyReportPrompt(p);
-    let result;
-    if(provider==='gemini')result=await callGemini(prompt,geminiKey,localStorage.getItem('auditPM_geminiModel')||'gemini-2.0-flash');
-    else result=await callZhipu(prompt,zhipuKey,localStorage.getItem('auditPM_zhipuModel')||'glm-4-flash');
-    const match=result.match(/\{[\s\S]*\}/);if(!match)throw new Error('AI 回覆格式錯誤，請重試');
-    const data=JSON.parse(match[0]);
-    const fieldMap={summary:'m-summary',completed:'m-completed',inProgress:'m-inprogress',issues:'m-issues',nextSteps:'m-nextsteps'};
-    Object.entries(fieldMap).forEach(([k,id])=>{const el=document.getElementById(id);if(el&&data[k])el.value=data[k];});
-    if(hint)hint.textContent='✅ 草稿已生成，請審閱後儲存';
-  }catch(e){
-    if(hint)hint.textContent='❌ 生成失敗：'+e.message;
-  }finally{
-    if(btn){btn.disabled=false;btn.textContent='🤖 AI 生成草稿';}
-  }
 }
 
 /* ═══════════════════════════════════
@@ -2090,11 +2072,25 @@ function exportExcel(){
 ═══════════════════════════════════ */
 async function init(){
   loadLocal();
-  if(cloudMode){setSyncStatus('warn','連接雲端中…');const ok=await cloudLoad();if(!ok)setSyncStatus('err','載入失敗，顯示本地緩存');}
-  else setSyncStatus('local','本地模式（僅自己可見）');
+  // 先用本地緩存即時顯示，雲端同步完成後再更新畫面
   renderContent();
   renderIdentityPicker();
+  if(cloudMode){
+    setSyncStatus('warn','連接雲端中…');
+    const ok=await cloudLoad();
+    if(ok){if(currentProject>=projects.length)currentProject=0;renderContent();}
+    else setSyncStatus('err','載入失敗，顯示本地緩存');
+  }
+  else setSyncStatus('local','本地模式（僅自己可見）');
 }
+// 跨越手機/桌面斷點時重新渲染（只比較闊度，避免手機鍵盤彈出觸發）
+let _lastVw=window.innerWidth,_rsT=null;
+window.addEventListener('resize',()=>{
+  const w=window.innerWidth;
+  const crossed=(_lastVw<=768)!==(w<=768);
+  _lastVw=w;
+  if(crossed){clearTimeout(_rsT);_rsT=setTimeout(renderContent,200);}
+});
 init();
 </script>
 </body>
