@@ -311,6 +311,9 @@ textarea.form-input{font-size:16px!important;min-height:80px}
 .ai-btn{background:linear-gradient(135deg,#1a3a5c 0%,#533AB7 100%);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
 .ai-btn:hover{opacity:.88;transform:translateY(-1px)}
 .ai-btn:disabled{opacity:.5;cursor:wait;transform:none}
+/* ── Overdue badge ── */
+.overdue-badge{background:#FADBD8;color:#A32D2D;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;cursor:pointer;border:1px solid #e4a0a0;font-family:inherit;white-space:nowrap}
+.overdue-badge:hover{background:#f5c4c0}
 /* ── Admin mode ── */
 .admin-only{display:none!important}
 body.admin-mode .admin-only{display:inline-flex!important}
@@ -334,7 +337,9 @@ body.admin-mode .admin-only{display:inline-flex!important}
 
 <div class="topbar">
   <div class="topbar-logo-row">
-    <div><span class="logo">內審項目管理</span><span class="logo-sub">Internal Audit PM</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span class="logo">內審項目管理</span><span class="logo-sub">Internal Audit PM</span>
+      <button class="overdue-badge" id="overdue-badge" style="display:none" onclick="showOverdueList()"></button>
+    </div>
     <div class="identity-wrap" id="identity-wrap">
       <div class="identity-picker" id="identity-picker" onclick="toggleIdentityDropdown()">
         <div class="identity-avatar" id="identity-avatar"></div>
@@ -356,7 +361,8 @@ body.admin-mode .admin-only{display:inline-flex!important}
 <div class="sync-bar sync-local" id="sync-bar">
   <div class="sync-dot"></div>
   <span class="sync-text" id="sync-text">本地模式（僅自己可見）</span>
-  <button class="sync-link" onclick="openModal('cloudSetup')">點此設定 Gitee 雲端共享 →</button>
+  <button class="sync-link" id="setup-link" onclick="openModal('cloudSetup')">點此設定 Gitee 雲端共享 →</button>
+  <button class="sync-link" id="reload-btn" style="display:none" onclick="manualReload()">🔄 重新載入</button>
 </div>
 <div class="proj-tabs" id="proj-tabs"></div>
 <div class="view-nav" id="view-nav"></div>
@@ -535,7 +541,8 @@ function setSyncStatus(state,msg){
   const bar=document.getElementById('sync-bar'),txt=document.getElementById('sync-text');
   if(!bar||!txt)return;
   bar.className='sync-bar sync-'+state;txt.textContent=msg;
-  const lnk=bar.querySelector('.sync-link');if(lnk)lnk.style.display=cloudMode?'none':'inline';
+  const lnk=document.getElementById('setup-link');if(lnk)lnk.style.display=cloudMode?'none':'inline';
+  const rl=document.getElementById('reload-btn');if(rl)rl.style.display=cloudMode?'inline':'none';
 }
 async function cloudLoad(){
   if(!cloudMode)return false;
@@ -716,7 +723,7 @@ function setView(v){currentView=v;renderViewNav();renderContent();}
 function toggleSection(sid){const s=getProject().sections.find(s=>s.id===sid);if(s){s.open=!s.open;cloudSave();renderContent();}}
 
 function renderContent(){
-  renderProjTabs();renderViewNav();
+  renderProjTabs();renderViewNav();updateOverdueBadge();
   const p=getProject();
   if(!p){document.getElementById('content').innerHTML='<div style="padding:32px;text-align:center;color:#888780">請新增審計項目</div>';return;}
   const prog=overallProgress(p);const st=statusObj(prog>=100?'done':prog>0?'wip':'todo');
@@ -1616,6 +1623,15 @@ function openModal(type,sid,tid){
       </div>
       ${connected?`<button class="btn btn-secondary btn-sm" onclick="runDiagnostics()" style="width:100%;margin-bottom:10px">🔍 診斷連接問題</button>
         <pre id="diag-out" style="margin-bottom:10px;padding:10px;background:#f8f7f4;border-radius:8px;font-size:11px;font-family:monospace;white-space:pre-wrap;color:#5f5e5a;border:1px solid #eeece6;min-height:40px;max-height:160px;overflow-y:auto"></pre>`:''}
+      <div style="margin-top:4px;padding-top:14px;border-top:1px solid #f1efe8">
+        <div style="font-size:12px;font-weight:700;color:#5f5e5a;margin-bottom:8px">💾 資料備份（JSON）</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" style="flex:1;justify-content:center" onclick="exportBackup()">📥 下載備份</button>
+          <button class="btn btn-secondary btn-sm admin-only" style="flex:1;justify-content:center" onclick="document.getElementById('backup-file').click()">📂 匯入備份</button>
+          <input type="file" id="backup-file" accept=".json,application/json" style="display:none" onchange="importBackup(this)">
+        </div>
+        <div class="form-hint" style="margin-top:6px">建議定期下載備份。匯入會覆蓋現有全部資料（僅管理員可匯入）。</div>
+      </div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeModal()">關閉</button>
         <button class="btn btn-primary" onclick="connectGitee()">連接並同步</button>
@@ -1873,6 +1889,71 @@ async function connectGitee(){
   saveGiteeCreds(token,owner,repo);const ok=await cloudLoad();if(ok){closeModal();renderContent();}
 }
 function disconnectCloud(){if(!confirm('確認斷開 Gitee 連接？'))return;clearGiteeCreds();setSyncStatus('local','本地模式（僅自己可見）');openModal('cloudSetup');}
+async function manualReload(){
+  if(!cloudMode)return;
+  const ok=await cloudLoad();
+  if(ok){if(currentProject>=projects.length)currentProject=0;renderContent();}
+}
+
+/* ── JSON 備份導出／匯入 ── */
+function exportBackup(){
+  const blob=new Blob([JSON.stringify({projects,team,exportedAt:new Date().toISOString()},null,2)],{type:'application/json;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`audit-pm-備份_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();URL.revokeObjectURL(a.href);
+}
+function importBackup(input){
+  const file=input.files&&input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(!data||!Array.isArray(data.projects))throw new Error('檔案格式不正確，需要 audit-pm 備份 JSON');
+      const when=data.exportedAt?`（匯出於 ${data.exportedAt.slice(0,10)}）`:'';
+      if(!confirm(`確認匯入備份？\n備份包含 ${data.projects.length} 個項目${when}。\n⚠️ 現有所有資料（包括雲端）將被覆蓋！`))return;
+      projects=data.projects.map(migrate);
+      if(Array.isArray(data.team))team=data.team;
+      fixDuplicateIds();
+      currentProject=0;
+      cloudSave();closeModal();renderContent();renderIdentityPicker();
+      alert('✅ 備份匯入成功');
+    }catch(err){alert('❌ 匯入失敗：'+err.message);}
+  };
+  reader.readAsText(file);
+  input.value='';
+}
+
+/* ── 逾期任務徽章及清單 ── */
+function updateOverdueBadge(){
+  let n=0;
+  projects.forEach(p=>{if(p.archived)return;p.sections.forEach(s=>s.tasks.forEach(t=>{if(calcTaskRisk(t)==='overdue')n++;}));});
+  const el=document.getElementById('overdue-badge');if(!el)return;
+  if(n>0){el.style.display='inline-flex';el.textContent=`⚠️ ${n} 項逾期`;}
+  else el.style.display='none';
+}
+function showOverdueList(){
+  const today=new Date().setHours(0,0,0,0);
+  let rows='';
+  projects.forEach((p,pi)=>{
+    if(p.archived)return;
+    p.sections.forEach(s=>s.tasks.forEach(t=>{
+      if(calcTaskRisk(t)!=='overdue')return;
+      const days=Math.ceil((today-new Date(t.end).setHours(0,0,0,0))/86400000);
+      rows+=`<div class="workload-task-row" style="cursor:pointer" onclick="currentProject=${pi};currentView='task';closeModal();renderViewNav();renderContent()">
+        <div style="width:9px;height:9px;border-radius:50%;background:${s.color};flex-shrink:0"></div>
+        <div style="flex:1;overflow:hidden">
+          <div style="font-weight:600;color:#A32D2D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.name)}</div>
+          <div style="font-size:11px;color:#888780">${escHtml(p.name)} · ${escHtml(s.name)} · ${escHtml(t.assignee)}</div>
+        </div>
+        <span style="font-size:11px;color:#A32D2D;font-weight:700;flex-shrink:0">逾期 ${days} 天</span>
+      </div>`;
+    }));
+  });
+  showModal(`<div class="modal modal-wide"><div class="modal-title">⚠️ 逾期任務一覽</div>
+    <div style="font-size:11px;color:#888780;margin-bottom:8px">點擊任務可跳轉至所屬項目</div>
+    ${rows||'<div style="padding:16px;color:#888780;font-size:13px;text-align:center">沒有逾期任務 🎉</div>'}
+    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">關閉</button></div></div>`);
+}
 
 /* ═══════════════════════════════════
    AI & SUBTASK HELPERS
@@ -2064,6 +2145,14 @@ function exportExcel(){
   const ws2=XLSX.utils.aoa_to_sheet(riskRows);ws2['!cols']=[{wch:16},{wch:8},{wch:30},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10}];
   XLSX.utils.book_append_sheet(wb,ws2,'風險評估');
   if(p.findings&&p.findings.length){const fRows=[['編號','版塊','風險水平','發現描述','審計建議','管理層回覆','責任人','整改期限','跟進狀態']];p.findings.forEach((f,i)=>{const r=riskObj(f.riskLevel);const fo=followObj(f.followStatus);fRows.push([`F-${String(i+1).padStart(3,'0')}`,f.sectionName,r.label,f.description||'',f.recommendation||'',f.mgmtReply||'',f.assignee||'',f.deadline||'',fo.label]);});const ws3=XLSX.utils.aoa_to_sheet(fRows);ws3['!cols']=[{wch:8},{wch:14},{wch:8},{wch:30},{wch:28},{wch:24},{wch:10},{wch:12},{wch:10}];XLSX.utils.book_append_sheet(wb,ws3,'審計發現');}
+  if(p.weeklyUpdates&&p.weeklyUpdates.length){
+    const uRows=[['日期','類型','標題','更新人','本期摘要','已完成工作','進行中','問題/阻礙','下期計劃']];
+    p.weeklyUpdates.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).forEach(u=>{
+      uRows.push([u.date||'',u.updateType==='biweekly'?'雙週報':'週報',u.title||'',u.author||'',u.summary||'',u.completed||'',u.inProgress||'',u.issues||'',u.nextSteps||'']);
+    });
+    const ws4=XLSX.utils.aoa_to_sheet(uRows);ws4['!cols']=[{wch:12},{wch:8},{wch:24},{wch:10},{wch:30},{wch:30},{wch:26},{wch:26},{wch:26}];
+    XLSX.utils.book_append_sheet(wb,ws4,'週報記錄');
+  }
   const fname=`${p.name}_${new Date().toISOString().slice(0,10)}.xlsx`;XLSX.writeFile(wb,fname);
 }
 
